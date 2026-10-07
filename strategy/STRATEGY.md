@@ -127,6 +127,10 @@ veins above —
   use-after-free; tagged with a reachability tier (guest-unprivileged vs guest-root; network-reachable).
 - *Kernel / hypervisor* — per-subsystem; guest-reachability; confidential-computing paths.
 
+> Where a target-class **playbook** fits (`playbooks/ml-serving.md`, `playbooks/vmm-devices.md`,
+> `playbooks/kvm-kernel.md`), it instantiates this taxonomy with the class's real buckets, signature
+> sinks, and published carve-outs — start there instead of from the generic list.
+
 ---
 
 ## 4 · Venue / expected-value map

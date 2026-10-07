@@ -47,7 +47,7 @@ A Claude-Code-native runbook for **authorized** critical-vulnerability research 
 ## Stage 1 - Scope & scout
 
 1. **Clone light.** For big repos use a blobless + sparse checkout so you only pull the surface you'll review: `scripts/clone.sh <repo-url> <dest> [subpath ...]`. Pin and record the exact `sha` - every file:line you later cite must be true at that `sha`.
-2. **Find the freshest surface.** Run `scripts/churn.sh --days 90 [path]` to rank files/dirs by recent change. The hottest, least-swept code is where crits hide. Also flag **incomplete-fix siblings**: when a security patch just landed, is there a *parallel* path it missed?
+2. **Find the freshest surface.** Run `scripts/churn.sh --days 90 [path]` to rank files/dirs by recent change. The hottest, least-swept code is where crits hide. Also flag **incomplete-fix siblings**: when a security patch just landed, is there a *parallel* path it missed? `scripts/patch-variant.sh <repo> <fix-commit>` reads the fix (and its regression test) and greps the siblings it didn't touch - the highest-EV move on a hardened target.
 3. **Build a surface map.** Enumerate entry points and trust boundaries - where untrusted input enters (network endpoints, IPC, parsed files, message queues, guest->host for VMM/kernel targets) and what privilege each entry assumes. Reachability recipes below (`scripts/*.sh`) seed this map fast.
 4. Write the surface map + churn ranking into PROGRESS.md.
 
@@ -56,7 +56,7 @@ A Claude-Code-native runbook for **authorized** critical-vulnerability research 
 ## Stage 2 - Bucket design
 
 1. **Decompose the surface into buckets**, churn-informed - give the hottest surface its own bucket. A bucket is a coherent slice one finder can own end-to-end.
-2. Use the reference taxonomies:
+2. Use the reference taxonomies (or, if a **target-class playbook** in `playbooks/` fits - `ml-serving.md`, `vmm-devices.md`, `kvm-kernel.md` - use its taxonomy, which instantiates these with the class's real buckets, sinks, and carve-outs):
    - **Web / app backend:** authz/RBAC gates, server-side code-exec sinks, unsafe deserialization, template injection (SSTI), unauth endpoints, SSRF.
    - **Native / VMM (e.g. device emulators):** per-device / per-subsystem; bounds / state-machine / use-after-free; tag each with a **reachability tier** (guest-unprivileged vs guest-root; network-reachable?).
    - **Kernel / hypervisor:** per-subsystem; guest-reachability; confidential-computing paths.
@@ -137,7 +137,8 @@ GATE B - DUP-CHECK (refuse dups):
   [ ] Incomplete-fix: sibling just patched? Is this the unpatched remainder (keep) or
       the same path (drop)?
   [ ] Any covering hit => DUP. Drop. Never file a dup.
-  (Mechanics + exact gh/MCP queries: scripts/dup-check-notes.md.)
+  (Mechanics: scripts/dup-scan.sh <owner/repo> [keyword] enumerates advisories/PRs/issues;
+   the same-root-cause vs sibling vs novel judgment is in scripts/dup-check-notes.md.)
 
 GATE C - SEVERITY-RECALIBRATE vs VENDOR PRECEDENT (refuse inflation):
   [ ] Pull the venue's rubric + 3-5 of the VENDOR'S OWN past ratings for similar bugs.
@@ -187,6 +188,7 @@ trigger actor:   unauthenticated network client, default config  => clears the b
 
 Fast census tools to seed the surface map (Stage 1), sharpen buckets (Stage 2), and give finders a reachability starting point (Stage 3). Treat output as *leads to source-verify*, never as proof.
 
+- **Entry-point census** - `scripts/entrypoints.sh <path>`: lists where untrusted input *enters*, grouped by channel (network listeners, HTTP routes, RPC/gRPC, message queues, file/stream parsers, port/config). The broadest stage-1 reachability seeder - pre-auth surface weights heaviest; cross it with the two census tools below.
 - **Authz-gate census** - `scripts/authz-census.sh <path>`: lists every route/handler and the auth/RBAC gate (decorator, middleware, guard) attached to its own block. Use it to spot handlers the gate *forgot*.
 - **Unauth-endpoint census** - `ONLY_NONE=1 scripts/authz-census.sh <path>`: the subset whose guard column comes back blank - the unauth / missing-gate leads, the highest-value entry channel. A blank guard is a prompt to READ THE CODE (a router/global/mixin gate may still cover it), never a finding on its own. Cross-check new/churned routers here first.
 - **Sink grep** - `scripts/sink-grep.sh <path>`: greps for dangerous sinks (deserialization `pickle`/`recv_pyobj`/`torch.load`, command/`exec`, template render/SSTI, raw memcpy/length math for native targets). Each hit is one end of a candidate chain - the finder's job is to connect it back to an untrusted source.
@@ -209,5 +211,8 @@ Fast census tools to seed the surface map (Stage 1), sharpen buckets (Stage 2), 
 - **templates/PROGRESS.md** - per-target journal (one per target).
 - **templates/SUBMISSION.md** - per-survivor write-up (one per filed finding).
 - **.claude/workflows/crit-hunt.js** - finder fan-out orchestration.
-- **scripts/clone.sh**, **scripts/churn.sh**, **scripts/authz-census.sh**, **scripts/sink-grep.sh** - scope/scout and reachability census tools.
-- **scripts/dup-check-notes.md** - the dup-check (Gate B) playbook.
+- **playbooks/** - per-target-class playbooks (`ml-serving.md`, `vmm-devices.md`, `kvm-kernel.md`); pick one at stage 0.
+- **scripts/clone.sh**, **scripts/churn.sh**, **scripts/entrypoints.sh**, **scripts/authz-census.sh**, **scripts/sink-grep.sh** - scope/scout and reachability census tools.
+- **scripts/patch-variant.sh** - incomplete-fix / variant analysis (stage 1 / §3c).
+- **scripts/dup-scan.sh** + **scripts/dup-check-notes.md** - the dup-check (Gate B) enumerator + playbook.
+- **examples/EXAMPLE-progress.md**, **examples/EXAMPLE-submission.md** - a fictional worked hunt, end to end.

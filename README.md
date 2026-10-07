@@ -48,20 +48,34 @@ does not develop or run working exploits. Full doctrine lives in
 ```
 critlover/
 ├── README.md                          ← you are here
+├── CLAUDE.md                          operating context + canon for anyone working in this repo
 ├── .claude/
 │   ├── skills/crit-hunt/SKILL.md       operator-facing playbook — invoke with /crit-hunt
 │   └── workflows/crit-hunt.js          fan-out / fan-in orchestration for the pipeline
 ├── strategy/
 │   └── STRATEGY.md                     the doctrine: where crits hide, carve-outs, the overclaim tax
+├── playbooks/                          per-target-class playbooks (pick one at stage 0)
+│   ├── README.md                       index + how to add a playbook
+│   ├── ml-serving.md                   ML-serving / LLM-inference frameworks (Python/FastAPI/RPC)
+│   ├── vmm-devices.md                  VMM / device emulators (C; QEMU-style, userspace models)
+│   └── kvm-kernel.md                   in-kernel KVM hypervisor + distributed-serving control planes
 ├── templates/                          the two fill-in artifacts (stages 0–3 live as sections of PROGRESS.md)
 │   ├── PROGRESS.md                     per-target journal — run card, buckets, round ledger, per-lead reasoning
 │   └── SUBMISSION.md                   one per survivor, ready for a human to review and file
-└── scripts/                            read-only recon helpers (no judgment, just data)
-    ├── clone.sh                        blobless + sparse clone for large repos
-    ├── churn.sh                        90-day churn analysis → freshest (least-swept) surface
-    ├── sink-grep.sh                    dangerous-sink census (deser / exec / SSTI / native), by class
-    ├── authz-census.sh                 route-to-guard table (ONLY_NONE=1 → unauth / missing-gate subset)
-    └── dup-check-notes.md              dup-check playbook: enumerate advisories + open PRs + issues
+├── examples/                          a fictional worked hunt, end to end
+│   ├── EXAMPLE-progress.md             filled-in journal (what "good" looks like)
+│   └── EXAMPLE-submission.md           filled-in survivor write-up
+├── scripts/                           read-only recon helpers (no judgment, just data)
+│   ├── clone.sh                        blobless + sparse clone for large repos
+│   ├── churn.sh                        90-day churn analysis → freshest (least-swept) surface
+│   ├── entrypoints.sh                  entry-point census by channel (listeners/routes/rpc/mq/…)
+│   ├── sink-grep.sh                    dangerous-sink census (deser / exec / SSTI / native), by class
+│   ├── authz-census.sh                 route-to-guard table (ONLY_NONE=1 → unauth / missing-gate subset)
+│   ├── patch-variant.sh                incomplete-fix / variant analysis from a fix commit
+│   ├── dup-scan.sh                     Gate B dup-check enumeration (advisories + PRs + issues)
+│   └── dup-check-notes.md              the dup-check playbook (judgment behind dup-scan.sh)
+└── tests/                             self-tests for the recon scripts (synthetic fixtures)
+    └── run.sh                          bash tests/run.sh → PASS/FAIL/SKIP per check
 ```
 
 - **Skill** — [`.claude/skills/crit-hunt/SKILL.md`](.claude/skills/crit-hunt/SKILL.md):
@@ -70,11 +84,17 @@ critlover/
   the orchestration that fans out one finder per bucket and fans their claims back in for grading.
 - **Strategy** — [`strategy/STRATEGY.md`](strategy/STRATEGY.md): the reasoning behind the moves —
   bucket taxonomies, the flagship-hardening ceiling, carve-out tactics, and the overclaim tax.
+- **Playbooks** — [`playbooks/`](playbooks/): per-target-class guides (ML-serving, VMM/device,
+  KVM/kernel) — the buckets, sinks, and carve-outs to expect for a given kind of target. Pick one at
+  stage 0 and let it specialize the pipeline.
 - **Templates** — [`templates/`](templates/): two fixed shapes — a per-target
   [`PROGRESS.md`](templates/PROGRESS.md) journal (stages 0–3 as sections) and one
   [`SUBMISSION.md`](templates/SUBMISSION.md) per survivor — so output is comparable across runs.
-- **Scripts** — [`scripts/`](scripts/): the read-only plumbing (clone, churn, sink + authz census,
-  dup-check) the skill and workflow lean on so agents spend their tokens on judgment, not recon.
+- **Examples** — [`examples/`](examples/): one fictional hunt filled in end to end, so you can see what a
+  good PROGRESS journal and SUBMISSION look like before running your own.
+- **Scripts** — [`scripts/`](scripts/): the read-only plumbing (clone, churn, entrypoint + sink + authz
+  census, incomplete-fix variant analysis, dup-check) the skill and workflow lean on so agents spend
+  their tokens on judgment, not recon. Self-tested by [`tests/run.sh`](tests/run.sh).
 
 ---
 

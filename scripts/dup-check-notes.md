@@ -35,7 +35,9 @@ with the same keyword can be unrelated. Decide on: the **vulnerable symbol/funct
 ## 2 · Enumeration checklist
 
 Run every row; a dup hides in whichever one you skip. Replace `<owner/repo>`, `<pkg>`, `<keyword>`,
-`<symbol>`.
+`<symbol>`. `scripts/dup-scan.sh <owner/repo> [keyword ...]` runs the repo-level rows (a)–(c) for you
+(building the advisory/PR/issue cache in §3 and grepping it); rows (d) silent-fix and (e) releases are
+still by hand.
 
 **a) Published advisories (the vendor's own + the global DBs).**
 ```sh
@@ -164,6 +166,8 @@ reviewer can see the finding is novel without re-running the search.
 - **Survives all of §2–§5** → carry the dup-check **trail** (the links you checked) into
   `templates/SUBMISSION.md`; it is part of the deliverable, not a side note.
 
-> The `gh` / MCP commands in §2–§3 are the enumeration to run by hand; these notes are the judgment no
-> command can make. The queries list candidates; **you** decide same-root-cause vs. sibling vs. novel —
-> and you stay default-skeptical of your own candidate until the records say it's new.
+> `scripts/dup-scan.sh <owner/repo> [keyword ...]` mechanizes the repo-level enumeration in §2–§3 (it
+> builds the advisory / PR / issue cache and greps it); the global Advisory DB / OSV (§2a), silent-fix
+> commits (§2d), and release notes (§2e) you still run by hand. These notes are the judgment no command
+> can make: the queries list candidates; **you** decide same-root-cause vs. sibling vs. novel — and you
+> stay default-skeptical of your own candidate until the records say it's new.
