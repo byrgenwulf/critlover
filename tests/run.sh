@@ -195,6 +195,19 @@ if [ -f "$ENTRY" ]; then
   rhas "entrypoints: lists an HTTP route from the fixtures" '/items|/pay|@app\.(get|post)|\.post\(' "$epout"
 fi
 
+# --- workflow logic (node stub harness for .claude/workflows/crit-hunt.js) --
+if command -v node >/dev/null 2>&1 && [ -f "$root/tests/workflow.test.mjs" ]; then
+  wf=$(mktemp "${TMPDIR:-/tmp}/critlover-wf.XXXXXX")
+  if node "$root/tests/workflow.test.mjs" "$root" >"$wf" 2>&1; then
+    ok "workflow logic (crit-hunt.js): $(grep -c '^PASS' "$wf" || true) stub-harness checks pass"
+  else
+    no "workflow logic (crit-hunt.js) stub harness FAILED"; sed 's/^/    /' "$wf"
+  fi
+  rm -f "$wf"
+else
+  skp "workflow logic test (node not available)"
+fi
+
 # --- tally ------------------------------------------------------------------
 printf '\n== %d passed, %d failed, %d skipped ==\n' "$pass" "$fail" "$skip"
 [ "$fail" -eq 0 ] || exit 1

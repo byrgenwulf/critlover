@@ -11,7 +11,10 @@ and that `churn.sh` ranks a file in a throwaway git tree. It also carries regres
 fixed defects: multi-language sink coverage (JS/Rust, not just Python+C), the context-count
 invariant (`CONTEXT>0` must not inflate the hit count), that a non-auth `Depends(get_db)` is not
 treated as a guard, and that `patch-variant.sh` does not execute a malicious repo's
-`diff.*.textconv`. Run it with `bash tests/run.sh` from anywhere (it locates its own repo root);
+`diff.*.textconv`. It also runs `workflow.test.mjs` (a node stub harness that loads the actual
+`.claude/workflows/crit-hunt.js` body with fake agents and asserts its grading control flow —
+Gate-A short-circuit, identity dedup, drop reasons, the MED floor — with no subagents or target;
+SKIPs if node is absent). Run it with `bash tests/run.sh` from anywhere (it locates its own repo root);
 it prints `PASS`/`FAIL`/`SKIP` per check and exits non-zero if anything fails. The fixtures
 (`fixtures/app.py`, `fixtures/app.js`, `fixtures/app.rs`, `fixtures/buf.c`) are fake,
 non-exploitable grep bait — never imported, served, or executed; the suite only tests that the
