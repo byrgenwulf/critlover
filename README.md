@@ -76,7 +76,7 @@ critlover/
 │   └── dup-check-notes.md              the dup-check playbook (judgment behind dup-scan.sh)
 ├── tests/                             self-tests for the recon scripts (synthetic fixtures)
 │   └── run.sh                          bash tests/run.sh → PASS/FAIL/SKIP per check
-└── .github/workflows/ci.yml           CI: bash -n + the self-test suite (hard gate) · shellcheck (advisory)
+└── .github/workflows/ci.yml           CI hard gates: bash -n + the self-test suite · shellcheck (pinned v0.10.0, --severity=style)
 ```
 
 - **Skill** — [`.claude/skills/crit-hunt/SKILL.md`](.claude/skills/crit-hunt/SKILL.md):

@@ -68,9 +68,9 @@ if [ -n "${DEPTH:-}" ]; then
   depth_args="--depth $DEPTH"
 fi
 
-printf '# clone — %s -> %s   (blobless%s%s)\n' "$url" "$dest" \
-  "$([ "$nsub" -gt 0 ] && printf ' + sparse' || true)" \
-  "$([ -n "$depth_args" ] && printf ' + depth %s' "$DEPTH" || true)"
+sparse_tag=""; [ "$nsub" -gt 0 ] && sparse_tag=" + sparse"
+depth_tag="";  [ -n "$depth_args" ] && depth_tag=" + depth $DEPTH"
+printf '# clone — %s -> %s   (blobless%s%s)\n' "$url" "$dest" "$sparse_tag" "$depth_tag"
 
 if [ "$nsub" -gt 0 ]; then
   # shellcheck disable=SC2086

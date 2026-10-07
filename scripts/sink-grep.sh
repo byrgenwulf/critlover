@@ -135,6 +135,8 @@ printf '# sink-grep — %s   classes: %s   backend: %s   (read-only)\n' \
   "$repo" "$classes" "$([ "$have_rg" -eq 1 ] && echo ripgrep || echo 'grep -r')"
 
 if want deser; then
+  # the glob LISTS below ($PY $JS …) are meant to word-split into separate -g args; set -f guards globbing
+  # shellcheck disable=SC2086
   report "deserialization sinks (py/js/java/ruby/php/go)" \
     "Safe forms exist per language (yaml.safe_load, JSON, Loader=SafeLoader) — confirm which. §3d: a native-object deserializer fed from a network-reachable channel is the recurring crit vein." \
     'pickle\.loads?\(|cPickle\.loads?\(|_pickle\.loads?\(|cloudpickle|recv_pyobj\(|torch\.load\(|yaml\.load\(|marshal\.loads?\(|node-serialize|(^|[^.[:alnum:]_])unserialize[[:space:]]*\(|readObject[[:space:]]*\(|readUnshared[[:space:]]*\(|ObjectInputStream|XMLDecoder|XStream|Marshal\.load[[:space:]]*\(|Oj\.load[[:space:]]*\(|gob\.NewDecoder[[:space:]]*\(' \
@@ -142,6 +144,8 @@ if want deser; then
 fi
 
 if want exec; then
+  # the glob LISTS below ($PY $JS …) are meant to word-split into separate -g args; set -f guards globbing
+  # shellcheck disable=SC2086
   report "code-exec sinks (py/js/java/go/ruby/php)" \
     "re.compile()/str.format()/regex.exec() are benign common matches — filter them. The crit is attacker-controlled bytes reaching exec/eval or a shell." \
     '(^|[^.[:alnum:]_])(exec|eval|compile)[[:space:]]*\(|shell[[:space:]]*=[[:space:]]*True|os\.(system|popen)[[:space:]]*\(|subprocess\.(run|call|check_output|check_call|Popen)[[:space:]]*\(|pty\.spawn[[:space:]]*\(|__import__[[:space:]]*\(|child_process|\.execSync[[:space:]]*\(|\.exec[[:space:]]*\(|spawnSync[[:space:]]*\(|new[[:space:]]+Function[[:space:]]*\(|Runtime\.getRuntime|ProcessBuilder[[:space:]]*\(|exec\.Command[[:space:]]*\(|(^|[^.[:alnum:]_])(system|passthru|shell_exec|proc_open|popen)[[:space:]]*\(' \
@@ -149,6 +153,8 @@ if want exec; then
 fi
 
 if want ssti; then
+  # the glob LISTS below ($PY $JS) are meant to word-split into separate -g args; set -f guards globbing
+  # shellcheck disable=SC2086
   report "template-injection (SSTI) sinks (py/js)" \
     ".render(/Template( are noisy (string.Template and fixed templates are fine). SSTI = attacker-controlled template TEXT, not template data. from_string(user_input) is the classic." \
     'render_template_string[[:space:]]*\(|(^|[^.[:alnum:]_])Template[[:space:]]*\(|\.from_string[[:space:]]*\(|\.render[[:space:]]*\(|handlebars\.compile[[:space:]]*\(|nunjucks\.|_\.template[[:space:]]*\(|ejs\.render|pug\.(compile|render)' \
@@ -156,6 +162,8 @@ if want ssti; then
 fi
 
 if want native; then
+  # the glob LISTS below ($C_GLOBS $RS) are meant to word-split into separate -g args; set -f guards globbing
+  # shellcheck disable=SC2086
   report "native memory sinks (C/C++ + Rust unsafe)" \
     "Lists the CALLS / unsafe sites only. Whether the length/size/index is attacker-controlled (guest/network) is a MANUAL check — that delta is the whole finding. C: see also strcat/sprintf/gets. Rust: audit the unsafe block's invariants." \
     '(^|[^.[:alnum:]_])(memcpy|memmove|alloca|strcpy|strcat|sprintf|gets)[[:space:]]*\(|(^|[^.[:alnum:]_])unsafe[[:space:]]*\{|transmute[[:space:]]*(::<[^>]*>)?[[:space:]]*\(|from_raw_parts|copy_nonoverlapping|get_unchecked|slice::from_raw' \

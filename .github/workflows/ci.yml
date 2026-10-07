@@ -1,7 +1,7 @@
 name: ci
 
-# Backstop for the recon scripts: the self-test suite is the hard gate; ShellCheck is
-# advisory until its first-run findings are triaged (then flip it to blocking).
+# Backstop for the recon scripts: the self-test suite AND ShellCheck (pinned v0.10.0,
+# --severity=style) are both hard gates. The scripts are verified clean at that level.
 on:
   push:
     branches: [main, "claude/**"]
@@ -21,10 +21,14 @@ jobs:
         run: bash tests/run.sh
 
   shellcheck:
-    name: shellcheck (advisory)
+    name: shellcheck
     runs-on: ubuntu-latest
-    continue-on-error: true  # advisory for now; tighten to blocking once findings are triaged
     steps:
       - uses: actions/checkout@v4
-      - name: ShellCheck
-        run: shellcheck --severity=warning scripts/*.sh tests/run.sh
+      - name: Install ShellCheck v0.10.0 (pinned so CI matches local results)
+        run: |
+          curl -fsSL https://github.com/koalaman/shellcheck/releases/download/v0.10.0/shellcheck-v0.10.0.linux.x86_64.tar.xz | tar -xJ
+          sudo install -m 0755 shellcheck-v0.10.0/shellcheck /usr/local/bin/shellcheck
+          shellcheck --version
+      - name: ShellCheck (blocking — clean at --severity=style)
+        run: shellcheck --severity=style scripts/*.sh tests/run.sh

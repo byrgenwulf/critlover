@@ -15,15 +15,15 @@
 set -eu
 
 # --- locate the repo root relative to THIS script, so it runs from anywhere ---
-here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-root=$(CDPATH= cd -- "$here/.." && pwd)
+here=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+root=$(CDPATH='' cd -- "$here/.." && pwd)
 scripts="$root/scripts"
 fixtures="$here/fixtures"
 
 SINK="$scripts/sink-grep.sh"
 AUTHZ="$scripts/authz-census.sh"
 CHURN="$scripts/churn.sh"
-ENTRY="$scripts/entrypoints.sh"   # added in parallel this round — may not exist yet
+ENTRY="$scripts/entrypoints.sh"
 
 pass=0; fail=0; skip=0
 ok()  { printf 'PASS: %s\n' "$1"; pass=$((pass + 1)); }
@@ -63,15 +63,14 @@ else
   skp "authz-census.sh: not found at $AUTHZ"
 fi
 
-# --- entrypoints.sh: SKIP gracefully if absent, else assert it surfaces -----
-# the POST route or a listener. (Added in parallel this round; CLI not yet known,
-# so the match is deliberately lenient.)
+# --- entrypoints.sh: SKIP gracefully if absent, else assert it surfaces ------
+# the POST route or a listener (match is deliberately lenient — channels vary).
 if [ -f "$ENTRY" ]; then
   out_entry=$(bash "$ENTRY" "$fixtures" 2>&1) || true
   rhas "entrypoints.sh: surfaces the POST route or a listener" \
        '@app\.post\(|/items|[Ll]isten|LISTEN|\.serve|bind\(|uvicorn|host=' "$out_entry"
 else
-  skp "entrypoints.sh: not present yet (added in parallel this round)"
+  skp "entrypoints.sh: not found at $ENTRY"
 fi
 
 # --- churn.sh: needs a git work tree, so build a throwaway copy -------------
@@ -136,6 +135,64 @@ if [ -f "$PV" ] && command -v git >/dev/null 2>&1; then
   bash "$PV" "$ev" HEAD >/dev/null 2>&1 || true
   if [ -f "$mark" ]; then no "patch-variant: malicious diff.textconv EXECUTED (RCE)"; else ok "patch-variant: --no-textconv blocks a malicious diff driver"; fi
   rm -rf "$ev"
+fi
+
+# --- grep-fallback path: scripts must work WITHOUT ripgrep (regression) -----
+# A PATH shim that omits rg forces `command -v rg` to fail and scan() to use grep -r.
+if command -v grep >/dev/null 2>&1; then
+  shim=$(mktemp -d "${TMPDIR:-/tmp}/critlover-nobin.XXXXXX")
+  for t in bash sh grep egrep fgrep sed awk gawk git wc sort uniq tr head cat mktemp dirname basename env test; do
+    p=$(command -v "$t" 2>/dev/null) && ln -sf "$p" "$shim/$t"
+  done   # deliberately NO rg
+  if [ -f "$SINK" ]; then
+    fb=$(PATH="$shim" bash "$SINK" "$fixtures" all 2>&1) || true
+    has "fallback: sink-grep runs on the grep -r backend" "backend: grep -r" "$fb"
+    has "fallback: sink-grep still finds pickle.loads"    "pickle.loads"      "$fb"
+    has "fallback: sink-grep still finds memcpy"          "memcpy"            "$fb"
+  fi
+  if [ -f "$AUTHZ" ]; then
+    fa=$(PATH="$shim" ONLY_NONE=1 bash "$AUTHZ" "$fixtures" py 2>&1) || true
+    has "fallback: authz ONLY_NONE still surfaces /transfer" "/transfer" "$fa"
+  fi
+  rm -rf "$shim"
+fi
+
+# --- dup-scan: degrades gracefully when gh is absent (regression) -----------
+DS="$scripts/dup-scan.sh"
+if [ -f "$DS" ]; then
+  nogh=$(mktemp -d "${TMPDIR:-/tmp}/critlover-nogh.XXXXXX")
+  for t in bash sh grep sed awk tr head cat mktemp env test; do
+    p=$(command -v "$t" 2>/dev/null) && ln -sf "$p" "$nogh/$t"
+  done   # deliberately NO gh
+  dsout=$(PATH="$nogh" bash "$DS" acme/widget pickle 2>&1) && dsrc=0 || dsrc=$?
+  if [ "${dsrc:-1}" -eq 0 ]; then ok "dup-scan: exits 0 when gh is absent"; else no "dup-scan: non-zero exit ($dsrc) with gh absent"; fi
+  has "dup-scan: prints the equivalent gh commands when gh absent" "gh api" "$dsout"
+  rm -rf "$nogh"
+fi
+
+# --- patch-variant: flags an unpatched sibling the fix didn't touch (regression) -
+if [ -f "$PV" ] && command -v git >/dev/null 2>&1; then
+  sv=$(mktemp -d "${TMPDIR:-/tmp}/critlover-sibling.XXXXXX")
+  (
+    cd "$sv" || exit 0
+    git init -q
+    printf 'def handler(x):\n    danger_sink(x)\n' > a.py
+    printf 'def other(x):\n    danger_sink(x)\n' > b.py
+    git -c user.email=t@t.invalid -c user.name=t add -A
+    git -c user.email=t@t.invalid -c user.name=t commit -qm init
+    printf 'def handler(x):\n    if ok(x):\n        danger_sink(x)\n' > a.py
+    git -c user.email=t@t.invalid -c user.name=t add -A
+    git -c user.email=t@t.invalid -c user.name=t commit -qm fix
+  ) >/dev/null 2>&1 || true
+  pvout=$(bash "$PV" "$sv" HEAD 'danger_sink' 2>&1) || true
+  has "patch-variant: flags the unpatched sibling b.py" "b.py" "$pvout"
+  rm -rf "$sv"
+fi
+
+# --- entrypoints: surfaces a route/listener channel (regression) ------------
+if [ -f "$ENTRY" ]; then
+  epout=$(bash "$ENTRY" "$fixtures" 2>&1) || true
+  rhas "entrypoints: lists an HTTP route from the fixtures" '/items|/pay|@app\.(get|post)|\.post\(' "$epout"
 fi
 
 # --- tally ------------------------------------------------------------------

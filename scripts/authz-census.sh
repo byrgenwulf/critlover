@@ -220,6 +220,8 @@ printf '# authz-census — %s   frameworks: %s   backend: %s   (read-only)\n' \
   "$repo" "$fws" "$([ "$have_rg" -eq 1 ] && echo ripgrep || echo 'grep -r')"
 
 if want py; then
+  # $PY is a glob LIST meant to word-split into -g args; set -f guards globbing
+  # shellcheck disable=SC2086
   census "Python routes (FastAPI / Flask / Starlette)" py \
     "$ROUTE_PY" \
     "$GUARD_PY" \
@@ -227,6 +229,8 @@ if want py; then
 fi
 
 if want express; then
+  # $JS is a glob LIST meant to word-split into -g args; set -f guards globbing
+  # shellcheck disable=SC2086
   census "Express / Koa routes" express \
     "$ROUTE_JS" \
     "$GUARD_JS" \
@@ -234,6 +238,8 @@ if want express; then
 fi
 
 if want django; then
+  # $URLS is a glob LIST meant to word-split into -g args; set -f guards globbing
+  # shellcheck disable=SC2086
   listroutes "Django url-conf entries (urls.py)" \
     '(^|[^.[:alnum:]_])(path|re_path|url)[[:space:]]*\(' \
     "Django guards live on the VIEW, not the url-conf. For each entry, open the view and confirm @login_required / LoginRequiredMixin / DRF permission_classes. A url-conf alone proves nothing about auth." \

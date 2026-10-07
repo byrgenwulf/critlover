@@ -1,10 +1,10 @@
 # critlover — PLAYBOOK: VMM / device emulators (C / Rust)
 
 *Target-class playbook for QEMU-style hypervisors and the device models they emulate (C). It
-specializes the canonical pipeline (stages 0–5; `.claude/skills/crit-hunt/SKILL.md`) for the
+specializes the canonical pipeline (stages 0–5; [`.claude/skills/crit-hunt/SKILL.md`](../.claude/skills/crit-hunt/SKILL.md)) for the
 **guest→host** trust boundary: which device bugs source review can actually prove, which eligibility
 gates cap a chain before you start, how to bucket by device family, and which carve-outs to attack
-*around*. Doctrine it builds on: `strategy/STRATEGY.md` §1–§6.*
+*around*. Doctrine it builds on: [`strategy/STRATEGY.md`](../strategy/STRATEGY.md) §1–§6.*
 
 > **Authorized, in-scope targets only; responsible disclosure via the official program.** Honor the
 > vendor's published threat model and device-eligibility carve-outs — attack *around* them, never
@@ -31,7 +31,7 @@ control and data flow — you can *read* them without a fuzzer.
   callback that re-enters while an object is mid-teardown (unplug, bus reset, async completion).
 - **Logic** — a path- / id- / permission mistake in the emulated protocol (9pfs path handling,
   resource-id reuse).
-- **Incomplete-fix variants** (§6) — the highest-EV move in this class (`scripts/patch-variant.sh`).
+- **Incomplete-fix variants** (§6) — the highest-EV move in this class ([`scripts/patch-variant.sh`](../scripts/patch-variant.sh)).
 
 **Different lane (be honest — not critlover's deliverable):**
 - **Raw memory-corruption-by-fuzzing.** Crashes found only by coverage-guided fuzzing of the emulated
@@ -57,7 +57,7 @@ carve-outs (§4) apply unchanged.
 ## 2 · Read the vendor's OWN eligibility gates FIRST (stage 0)
 
 Before any churn or fan-out, these projects publish **gates that cap whole classes of chains before you
-start.** Read them at stage 0, record them verbatim in the run card of `templates/PROGRESS.md`, and
+start.** Read them at stage 0, record them verbatim in the run card of [`templates/PROGRESS.md`](../templates/PROGRESS.md), and
 confirm the family you intend to hunt clears them — otherwise you are hunting inside a carve-out for
 EV 0.
 
@@ -134,7 +134,7 @@ Carve-outs feed two stages: the run-card threat-model filter (stage 0) and every
 | **guest-unprivileged** | any code in the guest, incl. a container / sandbox tenant or unprivileged userspace | **high** — the canonical guest→host escape tier; this is where device crits live |
 | **guest-root** | root / kernel inside the guest (programs device MMIO / PIO directly) | **capped** — the "self-inflicted" carve-out (§4); downgrade hard unless you can re-reach it unprivileged |
 
-Tag every bucket (§3) and every survivor (`templates/SUBMISSION.md`) with its tier, and apply the
+Tag every bucket (§3) and every survivor ([`templates/SUBMISSION.md`](../templates/SUBMISSION.md)) with its tier, and apply the
 **reachability tax** at Gate C: a chain that needs guest-root, a non-default device, or a second
 unproven bug is **not** a CRIT no matter how clean the corruption. Default-skeptical; a tie between two
 tiers → the lower (STRATEGY §5). **MED is the filing floor** — a capped sub-MED result is logged in
@@ -147,7 +147,7 @@ tiers → the lower (STRATEGY §5). **MED is the filing floor** — a capped sub
 Device models are patched one call path at a time; the root cause's siblings are under-swept *by
 construction* (STRATEGY §3c). This is the highest-EV source-review move in this class. Read the fix
 diff **and its regression test** — the test shows exactly which path the maintainer considered closed,
-and, by omission, which they didn't — then grep the sibling shape. `scripts/patch-variant.sh` does the
+and, by omission, which they didn't — then grep the sibling shape. [`scripts/patch-variant.sh`](../scripts/patch-variant.sh) does the
 diff-read-and-grep; `scripts/sink-grep.sh <path> native` seeds the copy sites.
 
 The four variant shapes to check on every device CVE:
@@ -163,7 +163,7 @@ The four variant shapes to check on every device CVE:
 > **Illustrative only.** A patch adds a cap in `parse_desc_header()` at `vmm/devices/virtio/vring.c:120`,
 > but the identical unchecked length lives in `parse_desc_trailer()` at `vmm/devices/virtio/vring.c:188`,
 > untouched. File it as *"incomplete fix of `<CVE/GHSA>`"*, not a dup — then dup-check the variant
-> itself (`scripts/dup-check-notes.md` §5).
+> itself ([`scripts/dup-check-notes.md`](../scripts/dup-check-notes.md) §5).
 
 ---
 
@@ -183,7 +183,7 @@ what critlover actually delivers — a verified chain.
 So: file the **source-verified chain to the vendor** for the CVE; hand **ZDI a candidate** only with
 eyes open about the gap; **never claim a "VM escape" you have not built.** The validation lane (building
 and running the PoC in an authorized lab) is the human's, per the lane split in
-`templates/SUBMISSION.md`.
+[`templates/SUBMISSION.md`](../templates/SUBMISSION.md).
 
 ---
 
@@ -191,28 +191,28 @@ and running the PoC in an authorized lab) is the human's, per the lane split in
 
 - **0 · Target & venue.** Read the eligibility gates (§2: security-annotated device set;
   accelerated-vs-software scope) **and** the carve-outs (§4). Pick the venue (§7). Record all of it
-  verbatim in the `templates/PROGRESS.md` run card. Confirm your intended family is eligible — else
+  verbatim in the [`templates/PROGRESS.md`](../templates/PROGRESS.md) run card. Confirm your intended family is eligible — else
   pivot now.
-- **1 · Scope & scout.** `scripts/clone.sh` the device-model subtree; `scripts/churn.sh --days 90` for
-  the freshest / least-swept device (new model, recent refactor); `scripts/entrypoints.sh` to map the
+- **1 · Scope & scout.** [`scripts/clone.sh`](../scripts/clone.sh) the device-model subtree; `scripts/churn.sh --days 90` for
+  the freshest / least-swept device (new model, recent refactor); [`scripts/entrypoints.sh`](../scripts/entrypoints.sh) to map the
   MMIO / PIO / virtqueue / DMA entry points and their tier; note any just-patched device CVE for the §6
   watch. Pin the sha — every `file:line` you later cite must be true at it.
 - **2 · Buckets.** One bucket per **eligible** device family (§3), tagged with dominant bug class +
   reachability tier (§5); seed one specific hypothesis each, *around* the carve-outs (§4), never into
   them.
-- **3 · Fan-out.** One finder per bucket via `.claude/workflows/crit-hunt.js` with the SKILL's
+- **3 · Fan-out.** One finder per bucket via [`.claude/workflows/crit-hunt.js`](../.claude/workflows/crit-hunt.js) with the SKILL's
   FINDER-PROMPT. Filter = §4 carve-outs; reachability bar = guest-unpriv / network-pre-auth preferred.
-  `scripts/sink-grep.sh native` + `scripts/patch-variant.sh` seed the leads. **Chains, not exploits** —
+  `scripts/sink-grep.sh native` + [`scripts/patch-variant.sh`](../scripts/patch-variant.sh) seed the leads. **Chains, not exploits** —
   source → transform → sink as `file:line` hops at the pinned sha.
 - **4 · Honest grading (three gates).** **A** source-verify every hop (the read is really
   guest-controlled; the bound is really absent / wrong; the sink really corrupts). **B** dup-check
-  (`scripts/dup-check-notes.md` / `scripts/dup-scan.sh`) — device CVEs are dense: CVE / GHSA / OSV + the
+  ([`scripts/dup-check-notes.md`](../scripts/dup-check-notes.md) / [`scripts/dup-scan.sh`](../scripts/dup-scan.sh)) — device CVEs are dense: CVE / GHSA / OSV + the
   project's security list + open PRs / issues on *that* device, plus the §6 incomplete-fix test. **C**
   recalibrate: carve-out test (§4 — TCG? backend? migration-only? DoS-only? L2→L1? guest-root-only?) +
   reachability tax (§5). MED floor.
-- **5 · Write-up & journal.** One `templates/SUBMISSION.md` per survivor — chain, reachability tier, dup
+- **5 · Write-up & journal.** One [`templates/SUBMISSION.md`](../templates/SUBMISSION.md) per survivor — chain, reachability tier, dup
   trail, vendor-precedent severity, and the lane split (source review done; the working PoC is the
-  human's authorized-lab job). Update the `templates/PROGRESS.md` journal and the overclaim tally.
+  human's authorized-lab job). Update the [`templates/PROGRESS.md`](../templates/PROGRESS.md) journal and the overclaim tally.
 
 ---
 
