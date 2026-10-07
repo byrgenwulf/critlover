@@ -1,0 +1,16 @@
+# scratch / editor / OS cruft
+*.tmp
+*.log
+.DS_Store
+*.swp
+
+# python bytecode (from local tooling or a vendored target under review)
+__pycache__/
+*.pyc
+
+# dup-scan.sh writes its cache to a mktemp dir by default; ignore it if OUT=. is ever used
+advisories.tsv
+known.tsv
+
+# local checkouts of targets under review do not belong in the kit
+/targets/

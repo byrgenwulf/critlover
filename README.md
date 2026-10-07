@@ -74,8 +74,9 @@ critlover/
 │   ├── patch-variant.sh                incomplete-fix / variant analysis from a fix commit
 │   ├── dup-scan.sh                     Gate B dup-check enumeration (advisories + PRs + issues)
 │   └── dup-check-notes.md              the dup-check playbook (judgment behind dup-scan.sh)
-└── tests/                             self-tests for the recon scripts (synthetic fixtures)
-    └── run.sh                          bash tests/run.sh → PASS/FAIL/SKIP per check
+├── tests/                             self-tests for the recon scripts (synthetic fixtures)
+│   └── run.sh                          bash tests/run.sh → PASS/FAIL/SKIP per check
+└── .github/workflows/ci.yml           CI: bash -n + the self-test suite (hard gate) · shellcheck (advisory)
 ```
 
 - **Skill** — [`.claude/skills/crit-hunt/SKILL.md`](.claude/skills/crit-hunt/SKILL.md):

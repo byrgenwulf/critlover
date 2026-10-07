@@ -1,0 +1,30 @@
+name: ci
+
+# Backstop for the recon scripts: the self-test suite is the hard gate; ShellCheck is
+# advisory until its first-run findings are triaged (then flip it to blocking).
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+
+jobs:
+  test:
+    name: scripts self-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ripgrep (the scripts' preferred backend)
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - name: Syntax-check every script (bash -n)
+        run: for f in scripts/*.sh tests/run.sh; do bash -n "$f"; done
+      - name: Grepper self-test suite
+        run: bash tests/run.sh
+
+  shellcheck:
+    name: shellcheck (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true  # advisory for now; tighten to blocking once findings are triaged
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShellCheck
+        run: shellcheck --severity=warning scripts/*.sh tests/run.sh
