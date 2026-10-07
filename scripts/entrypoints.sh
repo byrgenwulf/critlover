@@ -125,7 +125,8 @@ report() {  # report TITLE NOTE PATTERN GLOB...
     return 0
   fi
   out=$(scan "$pat" "$@")
-  if [ -n "$out" ]; then n=$(printf '%s\n' "$out" | wc -l | tr -d ' '); else n=0; fi
+  # count only match lines (file:line:text); drop rg context rows (file-line-text) and -- separators
+  if [ -n "$out" ]; then n=$(printf '%s\n' "$out" | grep -cE ':[0-9]+:' || true); else n=0; fi
   printf '\n== %s == (%s hit%s)\n' "$title" "$n" "$([ "$n" = 1 ] || printf s)"
   if [ -n "$note" ]; then printf '   note: %s\n' "$note"; fi
   if [ -n "$out" ]; then printf '%s\n' "$out"; else printf '   (none)\n'; fi

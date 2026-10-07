@@ -29,3 +29,10 @@ def create_item(request_body: bytes):
     obj = pickle.loads(request_body)   # deserialization sink (deser class)
     value = eval("1 + 1")              # code-exec sink (exec class)
     return {"ok": True, "obj": obj, "value": value}
+
+
+# State-changing route whose ONLY dependency is a non-auth helper (get_db).
+# A bare Depends(get_db) is NOT an auth guard, so ONLY_NONE=1 must still surface this.
+@app.post("/transfer")
+def transfer(db=Depends(get_db)):
+    return {"ok": True}

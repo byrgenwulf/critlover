@@ -144,27 +144,48 @@ census() {
   label=$1; mode=$2; route_re=$3; guard_re=$4; shift 4
   hits=$(scan "$route_re" "$@")
   [ "$max" -gt 0 ] && [ -n "$hits" ] && hits=$(printf '%s\n' "$hits" | head -n "$max")
-  n=0; [ -n "$hits" ] && n=$(printf '%s\n' "$hits" | wc -l | tr -d ' ')
-  printf '\n== %s == (%s route%s)\n' "$label" "$n" "$(plural "$n")"
-  if [ -z "$hits" ]; then printf '   (no routes matched)\n'; return 0; fi
-  printf '%s\n' "$hits" | while IFS= read -r hit; do
-    f=${hit%%:*}; rest=${hit#*:}; ln=${rest%%:*}; txt=${rest#*:}
-    case "$ln" in ''|*[!0-9]*) continue ;; esac
-    guards=$(capture "$f" "$mode" "$ln" | grep -Eo "$guard_re" 2>/dev/null | sort -u | tr '\n' ' ' | sed 's/ *$//' || true)
-    mut=""
-    case "$txt" in
-      *'.post('*|*'.put('*|*'.patch('*|*'.delete('*|*POST*|*PUT*|*PATCH*|*DELETE*) mut=" [MUTATING]" ;;
-    esac
-    # ONLY_NONE=1 => show only the blank-guard (unauth / missing-gate) subset.
-    if [ "${ONLY_NONE:-0}" = "1" ] && [ -n "$guards" ]; then continue; fi
-    printf '%s:%s%s\n' "$f" "$ln" "$mut"
-    printf '    route : %s\n' "$(printf '%s' "$txt" | sed 's/^[[:space:]]*//')"
-    if [ -n "$guards" ]; then
-      printf '    guard : %s\n' "$guards"
-    else
-      printf '    guard : (none on this route — READ THE CODE; may be gated by a router/global/mixin)\n'
-    fi
-  done
+  total=0; [ -n "$hits" ] && total=$(printf '%s\n' "$hits" | wc -l | tr -d ' ')
+
+  # Build the body in-shell (here-string, NOT a pipe) so shown/body survive the loop —
+  # a piped `while` runs in a subshell and would lose the printed count under ONLY_NONE.
+  body=""; shown=0
+  if [ -n "$hits" ]; then
+    while IFS= read -r hit; do
+      [ -n "$hit" ] || continue
+      f=${hit%%:*}; rest=${hit#*:}; ln=${rest%%:*}; txt=${rest#*:}
+      case "$ln" in ''|*[!0-9]*) continue ;; esac
+      guards=$(capture "$f" "$mode" "$ln" | grep -Eo "$guard_re" 2>/dev/null | sort -u | tr '\n' ' ' | sed 's/ *$//' || true)
+      # ONLY_NONE=1 => show only the blank-guard (unauth / missing-gate) subset
+      if [ "${ONLY_NONE:-0}" = "1" ] && [ -n "$guards" ]; then continue; fi
+      # [MUTATING]: a real state-changing verb CALL, or methods=[...] naming one — never a path substring
+      mut=""
+      case "$txt" in
+        *'.post('*|*'.put('*|*'.patch('*|*'.delete('*) mut=" [MUTATING]" ;;
+        *methods=*) case "$txt" in *POST*|*PUT*|*PATCH*|*DELETE*) mut=" [MUTATING]" ;; esac ;;
+      esac
+      shown=$((shown + 1))
+      rtxt=$(printf '%s' "$txt" | sed 's/^[[:space:]]*//')
+      if [ -n "$guards" ]; then gline="    guard : $guards"
+      else gline="    guard : (none on this route — READ THE CODE; may be gated by a router/global/mixin)"; fi
+      body="$body$f:$ln$mut
+    route : $rtxt
+$gline
+"
+    done <<< "$hits"
+  fi
+
+  if [ "${ONLY_NONE:-0}" = "1" ]; then
+    printf '\n== %s == (%s of %s route%s with a blank guard)\n' "$label" "$shown" "$total" "$(plural "$total")"
+  else
+    printf '\n== %s == (%s route%s)\n' "$label" "$total" "$(plural "$total")"
+  fi
+  if [ "$shown" -gt 0 ]; then
+    printf '%s' "$body"
+  elif [ "${ONLY_NONE:-0}" = "1" ] && [ "$total" -gt 0 ]; then
+    printf '   (no blank-guard routes — every matched route has an adjacent guard)\n'
+  else
+    printf '   (no routes matched)\n'
+  fi
   return 0
 }
 
@@ -183,22 +204,31 @@ PY="*.py"
 JS="*.js *.ts *.mjs *.cjs *.jsx *.tsx"
 URLS="urls.py **/urls.py"
 
-GUARD_PY='Depends\([^)]*\)|dependencies[[:space:]]*=|login_required|admin_required|roles?_required|permission_required|permission_classes|IsAuthenticated|IsAdminUser|current_user|get_current_[[:alnum:]_]+|requires?_[[:alnum:]_]+|verify_[[:alnum:]_]+|@[[:alnum:]_]*[Aa]uth[[:alnum:]_]*|@[[:alnum:]_]*[Ll]ogin[[:alnum:]_]*|@[[:alnum:]_]*[Aa]dmin[[:alnum:]_]*|@[[:alnum:]_]*[Pp]ermission[[:alnum:]_]*'
+# Only an AUTH-named Depends()/Security() counts as a guard — a bare Depends(get_db)/
+# Depends(pagination) is NOT a gate, so a route whose only dep is a DB/session helper
+# correctly falls into the blank-guard (ONLY_NONE) subset.
+GUARD_PY='(Depends|Security)\([^)]*([Aa]uth|[Tt]oken|[Cc]urrent_?[Uu]ser|[Rr]equire|[Vv]erif|[Pp]ermission|[Aa]dmin|[Ll]ogin|[Ii]dentity|[Pp]rincipal|[Ss]cope|[Oo]auth|[Jj]wt|[Aa]pi_?[Kk]ey|[Ss]ession)[^)]*\)|dependencies[[:space:]]*=|login_required|admin_required|roles?_required|permission_required|permission_classes|IsAuthenticated|IsAdminUser|current_user|get_current_[[:alnum:]_]+|requires?_[[:alnum:]_]+|verify_[[:alnum:]_]+|@[[:alnum:]_]*[Aa]uth[[:alnum:]_]*|@[[:alnum:]_]*[Ll]ogin[[:alnum:]_]*|@[[:alnum:]_]*[Aa]dmin[[:alnum:]_]*|@[[:alnum:]_]*[Pp]ermission[[:alnum:]_]*'
 GUARD_JS='requires?Auth|isAuthenticated|ensureAuth|ensureLoggedIn|ensureAdmin|require(Admin|Role|Permission)[[:alnum:]_]*|authorize[[:alnum:]_]*|authenticate[[:alnum:]_]*|passport\.authenticate\([^)]*\)|verify(Token|Jwt|JWT)|check(Auth|Role|Permission)|isAdmin|has(Role|Permission)|[[:alnum:]_]*[Aa]uth(Middleware|Guard)|jwt[[:alnum:]_]*|csrf[[:alnum:]_]*'
+
+# Route patterns. py: @decorator routes + list-style Route()/add_api_route()/add_url_rule().
+# express: (1) ANY var's .verb( whose first arg is a path string (catches `const r=Router(); r.post('/x'…)`),
+#          (2) the framework-var .verb|use( forms (catches `app.use(auth)` with no path arg).
+ROUTE_PY='@[[:alnum:]_.]+\.(get|post|put|patch|delete|options|head|route|websocket|api_route)[[:space:]]*\(|(^|[^.[:alnum:]_])(Route|add_api_route|add_url_rule)[[:space:]]*\('
+ROUTE_JS="(^|[^.[:alnum:]_])[A-Za-z_\$][[:alnum:]_\$]*\.(get|post|put|patch|delete|options|head|all)[[:space:]]*\([[:space:]]*[\"'\`/]|(^|[^.[:alnum:]_])(app|router|api|routes?)\.(get|post|put|patch|delete|options|head|all|use)[[:space:]]*\("
 
 printf '# authz-census — %s   frameworks: %s   backend: %s   (read-only)\n' \
   "$repo" "$fws" "$([ "$have_rg" -eq 1 ] && echo ripgrep || echo 'grep -r')"
 
 if want py; then
   census "Python routes (FastAPI / Flask / Starlette)" py \
-    '@[[:alnum:]_.]+\.(get|post|put|patch|delete|options|head|route|websocket|api_route)[[:space:]]*\(' \
+    "$ROUTE_PY" \
     "$GUARD_PY" \
     $PY
 fi
 
 if want express; then
   census "Express / Koa routes" express \
-    '(^|[^.[:alnum:]_])(app|router|api|routes?)\.(get|post|put|patch|delete|options|head|all|use)[[:space:]]*\(' \
+    "$ROUTE_JS" \
     "$GUARD_JS" \
     $JS
 fi

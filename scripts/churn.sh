@@ -60,6 +60,9 @@ EOF
 
 die() { printf '%s: %s\n' "$prog" "$1" >&2; exit "${2:-2}"; }
 
+# clip: keep the top $top rows, or ALL rows when TOP<=0 (0 = unlimited, like authz MAX=0)
+clip() { if [ "${top:-0}" -gt 0 ]; then head -n "$top"; else cat; fi; }
+
 # --- arg parse (supports both positional days and --days N) ---------------
 repo=""
 days=""
@@ -121,7 +124,7 @@ dirs=$(
       }
       END { flush(); for (d in counts) printf "%7d  %s\n", counts[d], d }
     ' \
-  | sort -rn | head -n "$top"
+  | sort -rn | clip
 )
 if [ -n "$dirs" ]; then printf '%s\n' "$dirs"; else printf '   (no file-changing commits in window)\n'; fi
 
@@ -131,7 +134,7 @@ files=$(
   git -C "$repo" -c core.quotePath=false log "$ref" --since="$since" \
       --no-merges --name-only --pretty=format: 2>/dev/null \
   | sed '/^[[:space:]]*$/d' \
-  | sort | uniq -c | sort -rn | head -n "$top"
+  | sort | uniq -c | sort -rn | clip
 )
 if [ -n "$files" ]; then printf '%s\n' "$files"; else printf '   (no file-changing commits in window)\n'; fi
 

@@ -57,7 +57,10 @@ dest=${1:-}
 if [ -z "$dest" ]; then base=${url##*/}; dest=${base%.git}; fi
 [ -n "$dest" ] || die "could not derive a destination directory from: $url"
 [ -e "$dest" ] && die "destination already exists: $dest (refusing to overwrite)"
-subpaths="$*"
+# remaining args are the sparse subpaths — keep them in "$@" (never flatten through $*,
+# which would word-split and glob-expand a subpath against THIS script's cwd)
+nsub=$#
+subpaths_disp="$*"
 
 depth_args=""
 if [ -n "${DEPTH:-}" ]; then
@@ -66,14 +69,13 @@ if [ -n "${DEPTH:-}" ]; then
 fi
 
 printf '# clone — %s -> %s   (blobless%s%s)\n' "$url" "$dest" \
-  "$([ -n "$subpaths" ] && printf ' + sparse' || true)" \
+  "$([ "$nsub" -gt 0 ] && printf ' + sparse' || true)" \
   "$([ -n "$depth_args" ] && printf ' + depth %s' "$DEPTH" || true)"
 
-if [ -n "$subpaths" ]; then
+if [ "$nsub" -gt 0 ]; then
   # shellcheck disable=SC2086
   git clone --filter=blob:none --sparse $depth_args -- "$url" "$dest"
-  # shellcheck disable=SC2086
-  git -C "$dest" sparse-checkout set -- $subpaths
+  git -C "$dest" sparse-checkout set -- "$@"
 else
   # shellcheck disable=SC2086
   git clone --filter=blob:none $depth_args -- "$url" "$dest"
@@ -90,5 +92,5 @@ printf '\n# cloned.\n'
 printf '#   path : %s\n' "$dest"
 printf '#   ref  : %s\n' "$ref_now"
 printf '#   HEAD : %s   <-- PIN THIS: every file:line you cite must hold at this sha\n' "$sha"
-if [ -n "$subpaths" ]; then printf '#   sparse: %s\n' "$subpaths"; fi
+if [ "$nsub" -gt 0 ]; then printf '#   sparse: %s\n' "$subpaths_disp"; fi
 printf '#   next : record target @ %s in templates/PROGRESS.md, then: churn.sh %s 90\n' "$sha" "$dest"

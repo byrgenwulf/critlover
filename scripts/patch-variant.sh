@@ -10,7 +10,10 @@
 # the changed symbol names best-effort, then greps that same sink shape across the
 # SIBLING files the fix did NOT touch. The unpatched sibling is the finding.
 #
-# No network, no writes, HEAD unchanged. A patch usually closes ONE call path, not
+# No network, no writes, HEAD unchanged. The diff-rendering `git show` calls use
+# --no-textconv so a malicious repo-local diff driver (diff.<drv>.textconv in an
+# attacker-supplied .git/config) cannot execute when you point this at an untrusted
+# checkout. A patch usually closes ONE call path, not
 # the root cause's siblings — so the other caller of the same sink, the adjacent
 # function with the identical bounds mistake, or the fix applied to sync but not
 # async / read but not write, is a NEW finding (incomplete fix of the CVE).
@@ -101,7 +104,7 @@ printf '\n== files touched (stat) ==\n'
 git -C "$repo" show --stat --format= "$sha" 2>/dev/null | sed '/^[[:space:]]*$/d' || true
 
 printf '\n== fix diff (git show -U%s) ==\n' "$context"
-git -C "$repo" show --format= "-U${context}" "$sha" 2>/dev/null || true
+git -C "$repo" show --no-textconv --format= "-U${context}" "$sha" 2>/dev/null || true
 
 # --- 2. touched files + regression tests among them -----------------------
 git -C "$repo" show --name-only --format= "$sha" 2>/dev/null | sed '/^[[:space:]]*$/d' | sort -u > "$touched" || true
@@ -120,7 +123,7 @@ fi
 # --- 3. changed symbols (best-effort, from the diff) ----------------------
 printf '\n== changed symbols (best-effort, from the diff) ==\n'
 symbols=$(
-  git -C "$repo" show --format= -U0 "$sha" 2>/dev/null \
+  git -C "$repo" show --no-textconv --format= -U0 "$sha" 2>/dev/null \
     | grep -E '^[+-]' \
     | grep -Ev '^(\+\+\+|---)' \
     | grep -Eo '((def|function|func|fn|class|struct|interface|sub|method)[[:space:]]+[A-Za-z_][A-Za-z0-9_]*|[A-Za-z_][A-Za-z0-9_]{2,}[[:space:]]*\()' \

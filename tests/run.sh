@@ -95,6 +95,49 @@ else
   rm -rf "$tmp"; trap - EXIT
 fi
 
+# --- multi-language sink coverage (regression: the Python+C-only gap) -------
+if [ -f "$SINK" ]; then
+  out_deser=$(bash "$SINK" "$fixtures" deser 2>&1) || true
+  has  "sink-grep deser: catches JS node-serialize unserialize" "unserialize"    "$out_deser"
+  out_execjs=$(bash "$SINK" "$fixtures" exec 2>&1) || true
+  has  "sink-grep exec: catches JS child_process"               "child_process"  "$out_execjs"
+  out_native=$(bash "$SINK" "$fixtures" native 2>&1) || true
+  has  "sink-grep native: catches Rust from_raw_parts"          "from_raw_parts" "$out_native"
+  # context must NOT change the hit count (regression: inflated count when CONTEXT>0)
+  c0=$(bash "$SINK" "$fixtures" deser 2>&1 | grep -oE '\([0-9]+ hit' | grep -oE '[0-9]+' | head -1)
+  c3=$(CONTEXT=3 bash "$SINK" "$fixtures" deser 2>&1 | grep -oE '\([0-9]+ hit' | grep -oE '[0-9]+' | head -1)
+  if [ "${c0:-x}" = "${c3:-y}" ]; then ok "sink-grep: CONTEXT=3 hit count == CONTEXT=0 ($c0)"; else no "sink-grep: context inflates count ($c0 vs $c3)"; fi
+fi
+
+# --- authz: a non-auth Depends() is NOT a guard (regression #5) -------------
+if [ -f "$AUTHZ" ]; then
+  out_na=$(ONLY_NONE=1 bash "$AUTHZ" "$fixtures" py 2>&1) || true
+  has "authz ONLY_NONE: surfaces the non-auth-Depends /transfer route" "/transfer"        "$out_na"
+  has "authz ONLY_NONE: header uses the blank-guard count format"      "with a blank guard" "$out_na"
+fi
+
+# --- patch-variant: a malicious diff.textconv must NOT execute (regression #1) -
+PV="$scripts/patch-variant.sh"
+if [ -f "$PV" ] && command -v git >/dev/null 2>&1; then
+  ev=$(mktemp -d "${TMPDIR:-/tmp}/critlover-textconv.XXXXXX")
+  mark="$ev/PWNED_TEXTCONV"
+  (
+    cd "$ev" || exit 0
+    git init -q
+    printf 'def a(): pass\n' > m.py
+    git -c user.email=t@t.invalid -c user.name=t add -A
+    git -c user.email=t@t.invalid -c user.name=t commit -qm init
+    printf 'def b(): bad()\n' >> m.py
+    git -c user.email=t@t.invalid -c user.name=t add -A
+    git -c user.email=t@t.invalid -c user.name=t commit -qm fix
+    git config diff.evil.textconv "sh -c 'touch \"$mark\"; cat'"
+    printf '*.py diff=evil\n' > .gitattributes
+  ) >/dev/null 2>&1 || true
+  bash "$PV" "$ev" HEAD >/dev/null 2>&1 || true
+  if [ -f "$mark" ]; then no "patch-variant: malicious diff.textconv EXECUTED (RCE)"; else ok "patch-variant: --no-textconv blocks a malicious diff driver"; fi
+  rm -rf "$ev"
+fi
+
 # --- tally ------------------------------------------------------------------
 printf '\n== %d passed, %d failed, %d skipped ==\n' "$pass" "$fail" "$skip"
 [ "$fail" -eq 0 ] || exit 1
