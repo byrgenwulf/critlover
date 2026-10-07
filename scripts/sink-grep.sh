@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+#
+# sink-grep.sh — grep a repo for dangerous sinks, grouped by class.
+#
+# critlover stages 2-3 (bucket design / fan-out). READ-ONLY recon: a ripgrep
+# pass (falls back to grep -r) that lists candidate sinks as file:line:text,
+# grouped by bug class. It finds *where the matches are*; it does NOT decide
+# whether anything is reachable, attacker-controlled, or a bug. Every hit is
+# a lead for stage-4 verification, never a finding.
+#
+# Classes:
+#   deser     unsafe deserialization  — pickle/cPickle/_pickle.load(s),
+#             cloudpickle, recv_pyobj, torch.load, yaml.load, marshal.load(s)
+#   exec      code-exec sinks         — bare exec()/eval()/compile(),
+#             subprocess ... shell=True
+#   ssti      template injection      — render_template_string, Template(,
+#             Jinja .render( / .from_string(
+#   native    memory sinks            — memcpy/memmove/alloca/strcpy
+#
+# Usage:
+#   sink-grep.sh [repo] [class ...]
+#
+#   repo       path to scan                (default: current directory)
+#   class ...  one or more of: deser exec ssti native all   (default: all)
+#
+# Env:
+#   NO_IGNORE=1   also scan .gitignored / vendored paths (default: respect .gitignore)
+#   CONTEXT=N     print N lines of context around each hit (default: 0)
+#
+# honest-grading reminder (STRATEGY §5): a sink with no proven path from an
+# in-scope actor is not a finding. For each hit, in order: source-verify
+# reachability -> dup-check (dup-check-notes.md) ->
+# recalibrate severity vs the vendor rubric. Default-skeptical of every CRIT.
+#
+set -eu
+set -f  # the glob strings below are regex/file-glob LITERALS for rg/grep — never shell-expand them
+
+prog=${0##*/}
+die() { printf '%s: %s\n' "$prog" "$1" >&2; exit "${2:-2}"; }
+
+usage() {
+  cat <<EOF
+$prog — grep a repo for dangerous sinks, grouped by class (critlover stage 2-3).
+
+READ-ONLY: ripgrep (or grep -r) listing candidate sinks as file:line:text. It finds matches;
+it does NOT judge reachability or severity. Every hit is a stage-4 lead, not a finding.
+
+Usage:
+  $prog [repo] [class ...]
+
+  repo       path to scan                        (default: current directory)
+  class ...  deser | exec | ssti | native | all  (default: all)
+
+Env:
+  NO_IGNORE=1   also scan .gitignored / vendored paths (default: respect .gitignore)
+  CONTEXT=N     lines of context around each hit        (default: 0)
+
+Classes:
+  deser   pickle/cloudpickle/recv_pyobj/torch.load/yaml.load/marshal  (network-reachable = §3d vein)
+  exec    bare exec()/eval()/compile(), subprocess shell=True
+  ssti    render_template_string, Template(, Jinja .render( / .from_string(
+  native  memcpy / memmove / alloca / strcpy  (length source is a MANUAL check)
+EOF
+}
+
+# --- arg parse ------------------------------------------------------------
+for a in "$@"; do case "$a" in -h|--help) usage; exit 0 ;; esac; done
+
+repo="."
+if [ $# -gt 0 ]; then
+  case "$1" in
+    deser|exec|ssti|native|all) : ;;   # first arg is a class -> repo stays cwd
+    *) repo=$1; shift ;;
+  esac
+fi
+classes="$*"
+[ -n "$classes" ] || classes="all"
+
+[ -d "$repo" ] || die "not a directory: $repo (usage: $prog [repo] [class ...])"
+context=${CONTEXT:-0}
+case "$context" in ''|*[!0-9]*) die "CONTEXT must be a non-negative integer" ;; esac
+
+# --- backend: ripgrep preferred, grep -r fallback ------------------------
+have_rg=0
+if command -v rg >/dev/null 2>&1; then have_rg=1; fi
+
+# scan PATTERN GLOB... -> prints file:line:text (no match => empty, exit 0)
+scan() {
+  pat=$1; shift
+  globs=( "$@" )
+  g=""
+  if [ "$have_rg" -eq 1 ]; then
+    args=( --no-heading --line-number --with-filename --color=never )
+    [ "$context" -gt 0 ] && args+=( -C "$context" )
+    [ "${NO_IGNORE:-0}" = "1" ] && args+=( --no-ignore )
+    for g in "${globs[@]}"; do args+=( -g "$g" ); done
+    rg "${args[@]}" -e "$pat" -- "$repo" 2>/dev/null || true
+  else
+    args=()
+    for g in "${globs[@]}"; do args+=( "--include=$g" ); done
+    [ "$context" -gt 0 ] && args+=( -C "$context" )
+    grep -rEnI "${args[@]}" -e "$pat" -- "$repo" 2>/dev/null || true
+  fi
+}
+
+report() {
+  # report TITLE NOTE PATTERN GLOB...
+  title=$1; note=$2; pat=$3; shift 3
+  out=$(scan "$pat" "$@")
+  if [ -n "$out" ]; then n=$(printf '%s\n' "$out" | wc -l | tr -d ' '); else n=0; fi
+  printf '\n== %s == (%s hit%s)\n' "$title" "$n" "$([ "$n" = 1 ] || printf s)"
+  if [ -n "$note" ]; then printf '   note: %s\n' "$note"; fi
+  if [ -n "$out" ]; then printf '%s\n' "$out"; else printf '   (none)\n'; fi
+}
+
+want() { case " $classes " in *" all "*|*" $1 "*) return 0 ;; *) return 1 ;; esac; }
+
+PY="*.py"
+C_GLOBS="*.c *.h *.cc *.cpp *.cxx *.hpp *.hh *.hxx *.c++ *.cu"
+
+printf '# sink-grep — %s   classes: %s   backend: %s   (read-only)\n' \
+  "$repo" "$classes" "$([ "$have_rg" -eq 1 ] && echo ripgrep || echo 'grep -r')"
+
+if want deser; then
+  report "deserialization sinks" \
+    "yaml.load(...,Loader=SafeLoader)/yaml.safe_load are safe — confirm the loader. §3d: a native-object deserializer fed from a network-reachable channel is the recurring crit vein." \
+    'pickle\.loads?\(|cPickle\.loads?\(|_pickle\.loads?\(|cloudpickle|recv_pyobj\(|torch\.load\(|yaml\.load\(|marshal\.loads?\(' \
+    $PY
+fi
+
+if want exec; then
+  report "code-exec sinks" \
+    "re.compile()/str.format() are benign common matches — filter them. The crit is attacker-controlled bytes reaching exec/eval/compile or a shell." \
+    '(^|[^.[:alnum:]_])(exec|eval|compile)[[:space:]]*\(|shell[[:space:]]*=[[:space:]]*True' \
+    $PY
+fi
+
+if want ssti; then
+  report "template-injection (SSTI) sinks" \
+    ".render( and Template( are noisy (string.Template and fixed templates are fine). SSTI = attacker-controlled template TEXT, not template data. from_string(user_input) is the classic." \
+    'render_template_string[[:space:]]*\(|(^|[^.[:alnum:]_])Template[[:space:]]*\(|\.from_string[[:space:]]*\(|\.render[[:space:]]*\(' \
+    $PY
+fi
+
+if want native; then
+  report "native memory sinks" \
+    "Lists the CALLS only. Whether the length/size argument is attacker-controlled (guest/network) is a MANUAL check — that delta is the whole finding. See also: strcat/sprintf/gets." \
+    '(^|[^.[:alnum:]_])(memcpy|memmove|alloca|strcpy)[[:space:]]*\(' \
+    $C_GLOBS
+fi
+
+printf '\n# triage: hits are candidates, not bugs. For each -> (1) prove an in-scope actor\n'
+printf '#         can reach it, (2) dup-check (dup-check-notes.md), (3) re-score vs the\n'
+printf '#         vendor rubric. Capped by a documented carve-out? downgrade, never inflate.\n'
