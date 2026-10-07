@@ -1,9 +1,10 @@
 # critlover — PROGRESS: `<owner/repo>`
 
 *Per-target hunting journal. One per target. The running record that makes a hunt auditable and
-resumable — it carries the live ledger and the per-lead reasoning. Stages 0–3 (venue brief, surface
-map, buckets, finder briefs) are recorded in their own sections of this file; the only other template
-is `SUBMISSION.md`, one per survivor.*
+resumable — it carries the live ledger and the per-lead reasoning. Stages 0–3 are recorded in its own
+sections below (run card, threat-model filter, clone/scope notes, buckets table); the per-bucket finder
+charter is the FINDER-PROMPT in the skill, and the only other template is `SUBMISSION.md`, one per
+survivor.*
 
 > **Authorized, in-scope target only.** Responsible disclosure via `<VENUE>`'s official program only.
 > This is **source review** — a human validates in a lab and files. **Honest grading over volume:**

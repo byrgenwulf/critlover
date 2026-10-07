@@ -20,6 +20,11 @@ and "attack *around* the carve-outs, never *into* them." Every example in them i
 `file:line`); none contains real target source or exploit code. `vmm-devices.md` (userspace device
 models) and `kvm-kernel.md` (the in-kernel lane) are deliberate siblings and cross-reference each other.
 
+> **On duplication.** Each playbook deliberately restates the generic carve-out shapes, the CRIT-bar,
+> and the venue map so it reads standalone — but [`../strategy/STRATEGY.md`](../strategy/STRATEGY.md)
+> (§2 carve-outs · §4 venues · §5 the overclaim tax) is the **canonical** source. When doctrine changes,
+> edit STRATEGY first, then reconcile each playbook's class-specific deltas.
+
 **Adding a playbook.** Copy the shape of an existing one: open with the responsible-disclosure
 blockquote, then (1) why the class yields crits / is this your lane, (2) a bucket taxonomy as
 `PROGRESS.md` rows, (3) the signature sinks tied to [`../scripts/sink-grep.sh`](../scripts/sink-grep.sh),

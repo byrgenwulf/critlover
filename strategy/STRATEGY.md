@@ -116,8 +116,10 @@ obj = pickle.loads(sock.recv())        # or recv_pyobj(), torch.load(untrusted_p
 
 `pickle` / `recv_pyobj` / `torch.load` / unsafe YAML over a socket, a queue, a model-registry pull, or an
 RPC endpoint is arbitrary-code-execution waiting for a reachability proof. The bucket question is only:
-*can an unauthenticated or low-privileged party put bytes on that channel?* If yes, it's a crit. If it's
-gated behind a trusted-cluster carve-out, it's capped (§2) — grade it honestly either way.
+*can an unauthenticated or low-privileged party put bytes on that channel?* If yes, it is
+crit-*shaped* — but the severity is set at **Gate C** against the vendor's own precedent, and the impact
+locus can still cap it (e.g. worker-confined RCE → HIGH) even with **no** carve-out; a trusted-cluster
+carve-out caps it further (§2). Grade it honestly — never assume "reachable deserializer = CRIT".
 
 **Bucket hook (stage 2):** pick the taxonomy that fits the target and bias every bucket toward the four
 veins above —
@@ -129,7 +131,10 @@ veins above —
 
 > Where a target-class **playbook** fits (`playbooks/ml-serving.md`, `playbooks/vmm-devices.md`,
 > `playbooks/kvm-kernel.md`), it instantiates this taxonomy with the class's real buckets, signature
-> sinks, and published carve-outs — start there instead of from the generic list.
+> sinks, and published carve-outs — start there instead of from the generic list. There is **no generic
+> web/app-backend playbook yet** (ml-serving.md is Python/FastAPI-specific); for a Go/Node/Java/Ruby/PHP
+> backend, drive the hunt from this taxonomy plus the recon scripts, whose sink census now spans
+> py/js/java/go/ruby/php (deser/exec) and C/Rust (native).
 
 ---
 

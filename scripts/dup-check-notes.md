@@ -106,7 +106,7 @@ Match a candidate against the cache on its strongest tokens — the **symbol**, 
 grep -iE '<symbol>|<subsystem>|<class-word>' advisories.tsv known.tsv
 ```
 A hit is a *lead to read*, not an automatic dup — open it and compare **root cause + reachability**.
-No hit lowers the odds but is **not** proof of novelty; the silent-fix (§2d) and incomplete-fix (§6)
+No hit lowers the odds but is **not** proof of novelty; the silent-fix (§2d) and incomplete-fix (§5)
 checks still have to pass.
 
 ---

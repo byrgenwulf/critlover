@@ -1,4 +1,4 @@
-# critlover — PLAYBOOK: VMM / device emulators (C)
+# critlover — PLAYBOOK: VMM / device emulators (C / Rust)
 
 *Target-class playbook for QEMU-style hypervisors and the device models they emulate (C). It
 specializes the canonical pipeline (stages 0–5; `.claude/skills/crit-hunt/SKILL.md`) for the
@@ -40,6 +40,14 @@ control and data flow — you can *read* them without a fuzzer.
   readable edge is gone. If you cannot read the bug *as a chain*, it belongs to the fuzzing lane.
 - **Weaponization.** Turning a source-verified OOB write into a reliable escape is the Pwn2Own-tier
   lane (§7). critlover stops at the verified chain.
+
+**Rust VMMs (crosvm, Firecracker, cloud-hypervisor).** Same method, different sinks: safe Rust has no
+`memcpy`, so `scripts/sink-grep.sh native` now also flags Rust `unsafe{` / `transmute` / `from_raw_parts`
+/ `copy_nonoverlapping` / `get_unchecked`. The readable bugs are **unsafe-block invariant violations**,
+**integer overflow before a cast or index**, and the *same* descriptor / state-machine / UAF logic in
+safe code (a wrong bounds check in safe Rust still panics or mis-indexes). Don't hunt `memcpy` in safe
+Rust — hunt the `unsafe` blocks and the arithmetic feeding them. The eligibility gates (§2) and
+carve-outs (§4) apply unchanged.
 
 > Your edge over the vendor's fuzzers is the **readable** logic / bounds / state / UAF bug and the
 > **incomplete-fix sibling** — not racing the fuzzer on raw corruption (STRATEGY §1, §3c).

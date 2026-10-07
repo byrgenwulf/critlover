@@ -61,7 +61,7 @@ One finder owns each bucket (stage 2). Order by sweptness: the freshest surface 
 eyes and the thinnest dup field (STRATEGY §1, §3a). Upstream KVM is a hardened flagship, so expect the
 ceiling (STRATEGY §1) and weight the freshest subsystem and the incomplete-fix siblings (§6) accordingly.
 [`scripts/churn.sh`](../scripts/churn.sh)` --days 90` confirms which bucket is actually hottest in *your*
-target; `entrypoints.sh` *(this round)* seeds each bucket's entry channel (§5).
+target; [`entrypoints.sh`](../scripts/entrypoints.sh) seeds each bucket's entry channel (§5).
 
 | # | Bucket (subsystem) | Sweptness | Untrusted input / entry channel | Recurring crit shape (seed one, specific) | Typical tier |
 |---|---|---|---|---|---|
@@ -155,7 +155,7 @@ Carve-outs feed two stages: the run-card threat-model filter (stage 0) and every
 ## 5 · Reachability discipline — prove the actor reaches the entry point (Gate A)
 
 For this class reachability *is* half the severity (§1), so Gate A is where most finder claims die.
-`entrypoints.sh` *(this round)* seeds the entry-point census — it enumerates the guest→host and
+[`entrypoints.sh`](../scripts/entrypoints.sh) seeds the entry-point census — it enumerates the guest→host and
 control-plane entries and the privilege each caller assumes:
 
 - KVM `ioctl` handlers and the VM-exit / hypercall dispatch table,
@@ -187,8 +187,8 @@ Gate A, and it is the FINDER-PROMPT's reachability bar at stage 3.
 
 The highest-EV source-review move in this class (STRATEGY §3c). A kernel/hypervisor patch typically
 closes **one** call path or **one** arch, not the root cause's siblings — and the siblings are
-under-swept *by construction*, because everyone assumes the CVE closed the issue. `patch-variant.sh`
-*(this round)* points at it: feed it a just-landed security patch and it extracts the changed symbol /
+under-swept *by construction*, because everyone assumes the CVE closed the issue.
+[`patch-variant.sh`](../scripts/patch-variant.sh) points at it: feed it a just-landed security patch and it extracts the changed symbol /
 guard / shape and greps the arch and path siblings; [`scripts/sink-grep.sh`](../scripts/sink-grep.sh)`
 native` seeds the copy / length-math sites.
 
@@ -208,8 +208,7 @@ axes specific to this class:
 > `arch/arm64/kvm/mmu.c:640` is untouched — a *new* finding.
 
 A sibling the fix missed is a **new** finding, filed as *"incomplete fix of `<CVE/GHSA>`"* — **not a
-dup** (`dup-check-notes.md` §1, §5). But still dup-check the variant itself (`dup-scan.sh` *(this round)*
-+ [`scripts/dup-check-notes.md`](../scripts/dup-check-notes.md), Gate B): confirm the sibling is not
+dup** (`dup-check-notes.md` §1, §5). But still dup-check the variant itself ([`dup-scan.sh`](../scripts/dup-scan.sh) + [`dup-check-notes.md`](../scripts/dup-check-notes.md), Gate B): confirm the sibling is not
 *separately* already filed before you carry it to a SUBMISSION.
 
 ---
@@ -253,7 +252,7 @@ STRATEGY §4).
   [`templates/PROGRESS.md`](../templates/PROGRESS.md) run card. → §1, §4, §7.
 - **1 · Scope & scout.** [`scripts/clone.sh`](../scripts/clone.sh) (blobless + sparse) the subsystem
   subtree; [`scripts/churn.sh`](../scripts/churn.sh)` --days 90` for the freshest subsystem (CoCo
-  first); `entrypoints.sh` *(this round)* to map the guest→host and control-plane entries and their
+  first); [`entrypoints.sh`](../scripts/entrypoints.sh) to map the guest→host and control-plane entries and their
   tier. Note the incomplete-fix watch: a recent KVM CVE + the arch / path sibling to check (§6). Pin the
   sha — every `file:line` you later cite must be true at it.
 - **2 · Bucket design.** One bucket per subsystem from the §2 taxonomy (CoCo → MMU/EPT → emulator →
@@ -265,8 +264,8 @@ STRATEGY §4).
   and the dup-check duty. **Finders report chains, not exploits.**
 - **4 · Honest grading (three gates).** **A** source-verify every hop *and the reachability* at the
   pinned sha (§5) · **B** dup-check against advisories + kernel git history + open PRs / issues
-  (`dup-scan.sh` *(this round)* + [`scripts/dup-check-notes.md`](../scripts/dup-check-notes.md)) and run
-  the incomplete-fix variant check (`patch-variant.sh` *(this round)*, §6) · **C** recalibrate against
+  ([`dup-scan.sh`](../scripts/dup-scan.sh) + [`dup-check-notes.md`](../scripts/dup-check-notes.md)) and run
+  the incomplete-fix variant check ([`patch-variant.sh`](../scripts/patch-variant.sh), §6) · **C** recalibrate against
   the vendor's own precedent and apply the carve-out test (§4). Keep survivors only; log the overclaim
   tally. MED floor.
 - **5 · Write-up & journal.** One [`templates/SUBMISSION.md`](../templates/SUBMISSION.md) per survivor —

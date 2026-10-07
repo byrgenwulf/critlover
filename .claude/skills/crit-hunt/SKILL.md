@@ -40,7 +40,7 @@ A Claude-Code-native runbook for **authorized** critical-vulnerability research 
 
 1. **Relax the "elite-audited flagship" constraint.** Flagship projects with heavy recent maintainer activity are swarmed: dup risk is high and regressions are patched within days. Pure source review rarely yields crits there (the *flagship-hardening ceiling*). Prefer less-swept surface: smaller in-scope projects, and - within any target - new subsystems, new routers/connectors, and confidential-computing code.
 2. **Pick the venue first, then read its rules.** Before hunting, open the program/venue page and the repo's `SECURITY.md` / security docs. Extract three things: (a) what is **in scope**, (b) the **severity rubric**, (c) the **threat model and carve-outs** (what the vendor explicitly declines - e.g. "loading untrusted model files is out of scope", "local attacker with root is not a boundary").
-3. **Record the carve-outs verbatim** in the target's PROGRESS.md. Every later phase filters against them. A chain that lands inside a carve-out is dead on arrival.
+3. **Record the carve-outs verbatim** in the target's PROGRESS.md. Every later stage filters against them. A chain that lands inside a carve-out is dead on arrival.
 
 ---
 
@@ -66,7 +66,7 @@ A Claude-Code-native runbook for **authorized** critical-vulnerability research 
 
 ## Stage 3 - Fan-out finders
 
-Spin up **one finder per bucket**. Orchestrate the fan-out with `.claude/workflows/crit-hunt.js` (it spawns a subagent per bucket and collects their chains), or spawn them by hand. Hand each finder the template below, filled in for its bucket. **Finders report chains, not exploits.**
+Spin up **one finder per bucket**. Orchestrate with `.claude/workflows/crit-hunt.js` — pass it `args {repoPath, target, venue, threatModelFilter, buckets:[{key,hypothesis,paths}], knownAdvisories?}`: map the stage-0 **threat-model filter** (the PROGRESS run-card block) into `threatModelFilter`, and the stage-2 **buckets table** rows into `buckets`. The workflow fans out one finder per bucket **and runs the Stage-4 gates (A/B/C) itself**, returning `{survivors, dropped}`. Or spawn finders by hand with the template below and grade them yourself (Stage 4). Either way, **finders report chains, not exploits.**
 
 ### FINDER-PROMPT (copy, fill the `<...>`, hand to each finder)
 
@@ -102,22 +102,23 @@ DUP-CHECK DUTY (FLAG, do not self-clear — Gate B at stage 4 is authoritative):
   - FLAG a likely dup with its link; do NOT drop it yourself and never self-file.
     The grading pass confirms. (Mechanics: scripts/dup-check-notes.md.)
 
-OUTPUT - REPORT THE CHAIN, NOT AN EXPLOIT. For each survivor give:
+OUTPUT - REPORT THE CHAIN, NOT AN EXPLOIT. For each CANDIDATE give:
   - source -> transform(s) -> sink as file:line hops (cite REAL lines at the pinned
     sha; no exploit payloads, no PoC)
   - the untrusted input, and the guard(s) that fail to stop it
   - reachability evidence: how the trigger actor reaches the entry channel
-  - self-assessed severity WITH the vendor-precedent comparison you used to pick it
-  - dup-check results: what you searched, what you found
+  - a self-assessed severity (your starting guess only — Gate C sets the final one
+    against vendor precedent) and any prior art you FLAGGED above (Gate B makes the call)
   If you cannot source-verify a hop, SAY SO and downgrade it to a "lead". Default-
   skeptical: when unsure between two severities, pick the lower.
+  (These are CANDIDATES; a candidate becomes a "survivor" only after it clears Stage 4.)
 ```
 
 ---
 
 ## Stage 4 - Honest grading (the heart)
 
-Run every finder output through the gates below, **in order**. A finding that fails a gate is dropped or downgraded - it does not proceed. Grade as the adversary of the finder, not its advocate.
+Run every finder output through the gates below, **in order** — this is exactly what `.claude/workflows/crit-hunt.js`'s **Verify** phase automates (it returns `{survivors, dropped}`). Do it by hand when you spawned finders yourself, or use this checklist to audit the workflow's output. A finding that fails a gate is dropped or downgraded - it does not proceed. Grade as the adversary of the finder, not its advocate.
 
 ### HONEST-GRADING checklist
 
@@ -180,7 +181,7 @@ trigger actor:   unauthenticated network client, default config  => clears the b
 ## Stage 5 - Write-up & journal
 
 1. **One SUBMISSION per survivor.** Copy **templates/SUBMISSION.md** and fill it: the chain as file:line hops, the untrusted input and failing guard, reachability, the vendor-precedent severity justification, and the dup-check record. No exploit code. This is the artifact a human reviews and files through the official channel.
-2. **Keep the PROGRESS journal.** Copy **templates/PROGRESS.md** once per target and update it through every phase: target+venue decision, recorded carve-outs, surface map, buckets, finder results, grading outcomes (including drops and *why*), the overclaim tally, and dup hits. The journal is how a run is auditable and resumable.
+2. **Keep the PROGRESS journal.** Copy **templates/PROGRESS.md** once per target and update it through every stage: target+venue decision, recorded carve-outs, surface map, buckets, finder results, grading outcomes (including drops and *why*), the overclaim tally, and dup hits. The journal is how a run is auditable and resumable.
 
 ---
 

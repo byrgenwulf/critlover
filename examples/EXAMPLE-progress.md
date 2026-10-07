@@ -3,9 +3,10 @@
 # critlover — PROGRESS: `acme/modelgate`
 
 *Per-target hunting journal. One per target. The running record that makes a hunt auditable and
-resumable — it carries the live ledger and the per-lead reasoning. Stages 0–3 (venue brief, surface
-map, buckets, finder briefs) are recorded in their own sections of this file; the only other template
-is `SUBMISSION.md`, one per survivor.*
+resumable — it carries the live ledger and the per-lead reasoning. Stages 0–3 are recorded in its own
+sections below (run card, threat-model filter, clone/scope notes, buckets table); the per-bucket finder
+charter is the FINDER-PROMPT in the skill, and the only other template is `SUBMISSION.md`, one per
+survivor.*
 
 > **Authorized, in-scope target only.** Responsible disclosure via `huntr`'s official program only.
 > This is **source review** — a human validates in a lab and files. **Honest grading over volume:**
@@ -20,8 +21,8 @@ is `SUBMISSION.md`, one per survivor.*
 | Target | `acme/modelgate` — multi-node ML inference/serving gateway (fictional) |
 | HEAD | `0fae1dface0fface1dcafe0bad0c0ffee5eeded0` — **pinned**; every `file:line` in this file is true at this sha |
 | Venue | `huntr` |
-| Severity rubric | `https://huntr.example/acme-modelgate/rubric` *(placeholder — read it; never score from memory)* |
-| Scope / `SECURITY.md` | `https://github.example/acme/modelgate/blob/main/SECURITY.md` *(placeholder)* |
+| Severity rubric | `https://huntr.example/acme-rubric` *(placeholder — read it; never score from memory)* |
+| Scope / `SECURITY.md` | `https://github.example/acme/blob/main/SECURITY.md` *(placeholder)* |
 | Operator | `@omnihyperpunk` · Started `2026-10-05` · Status `closed` |
 | Carve-outs | recorded verbatim in the threat-model-filter block below |
 
@@ -38,7 +39,7 @@ is `SUBMISSION.md`, one per survivor.*
 
 **Clone / scope notes.**
 - Clone: blobless + sparse — pulled `dataplane/`, `control/`, `cluster/`, `serde/`, `serve/`. Churn window: `churn.sh --days 90`.
-- Freshest / least-swept surface (hunt first): `modelgate/dataplane/` — the shard-sync listener landed ~6 weeks ago in the 0.9 "horizontal sharding" feature; barely reviewed. **(vein: newest/least-swept surface)**
+- Freshest / least-swept surface (hunt first): `dataplane/` — the shard-sync listener landed ~6 weeks ago in the 0.9 "horizontal sharding" feature; barely reviewed. **(vein: newest/least-swept surface)**
 - Incomplete-fix watch: `GHSA-xxxx-fake-0001` just patched `control/configloader.py` `yaml.load`; sibling path to check = every other `cloudpickle` / `torch.load` / `yaml.load` sink reachable **without** auth. **(vein: incomplete-fix siblings → led straight to B1)**
 - Pre-auth / unauth entry surface: data-plane listener binds `0.0.0.0:8711` by default with **no** auth middleware; health/metrics/shard routes mounted there. **(veins: unauth/pre-auth endpoints + network-reachable deserialization)**
 
@@ -118,10 +119,10 @@ Cite real `file:line` hops at the pinned sha; keep examples generic — no real 
 ### Lead `B1-L1` — unauth data-plane shard-sync → `cloudpickle.loads` — finder claimed `CRIT`
 
 - **Chain (verified hops):**
-  - source `modelgate/dataplane/shard_sync.py:142` — handler for `POST /v1/shards/sync` reads the raw request body (a "shard delta" blob)
-  - guard `modelgate/dataplane/router.py:88` — auth middleware is bound to `control_router` **only**; the data-plane router mounts `shard_sync` with **no** `@require_token` (confirmed absent on handler, decorator, router, and app default)
-  - transform `modelgate/dataplane/shard_sync.py:171` — raw bytes handed to `codec.decode_delta(raw)` with no type/trust check
-  - **sink** `modelgate/serde/blobcodec.py:66` — `decode_delta` calls `cloudpickle.loads(buf)` on attacker-controlled bytes
+  - source `dataplane/shard_sync.py:142` — handler for `POST /v1/shards/sync` reads the raw request body (a "shard delta" blob)
+  - guard `dataplane/router.py:88` — auth middleware is bound to `control_router` **only**; the data-plane router mounts `shard_sync` with **no** `@require_token` (confirmed absent on handler, decorator, router, and app default)
+  - transform `dataplane/shard_sync.py:171` — raw bytes handed to `codec.decode_delta(raw)` with no type/trust check
+  - **sink** `serde/blobcodec.py:66` — `decode_delta` calls `cloudpickle.loads(buf)` on attacker-controlled bytes
 - **Reachability:** actor = unauth network client · channel = data-plane HTTP listener `0.0.0.0:8711` (default-on, `dataplane/server.py:31`; route mounted `dataplane/server.py:54`) · preconditions = **default config, none, self-contained**.
 - **Verdict:** **KEPT → SUBMISSION-1 at HIGH.** Gates A✓ (every hop opened and confirmed) and B✓ (novel).
   Gate C recalibrated CRIT→HIGH: all four generic CRIT legs clear, but the vendor's CRIT definition
@@ -129,15 +130,15 @@ Cite real `file:line` hops at the pinned sha; keep examples generic — no real 
   worker, which the rubric explicitly rates HIGH.
 - **Dup evidence:** searched CVE/NVD, GHSA + vendor advisories, merged + **OPEN** PRs, **OPEN** issues for
   `decode_delta` / `shard_sync` / `cloudpickle.loads`; result **novel**. Incomplete-fix check vs
-  `GHSA-xxxx-fake-0001`: that advisory patched `configloader.safe_load` (YAML, control plane) — different
+  `GHSA-xxxx-fake-0001`: that advisory patched `yaml.load` at `configloader.py:58` (control plane) — different
   sink, different path, different auth state; this is **not** its remainder.
 
 ### Lead `B3-L1` — raft AppendEntries → same `cloudpickle.loads` — finder claimed `CRIT`
 
 - **Chain (verified hops):**
-  - source `modelgate/cluster/raft_sync.py:98` — peer `AppendEntries` handler decodes a peer state blob
+  - source `cluster/raft_sync.py:98` — peer `AppendEntries` handler decodes a peer state blob
   - guard — peer identity is **network-trust only**; the channel has no cryptographic peer auth *by design*
-  - **sink** `modelgate/serde/blobcodec.py:66` — same `cloudpickle.loads` as B1-L1
+  - **sink** `serde/blobcodec.py:66` — same `cloudpickle.loads` as B1-L1
 - **Reachability:** actor = a node already holding an **on-fabric raft peer position** · channel = inter-node replication · precondition = attacker must already be a peer on the private cluster network.
 - **Verdict:** **CLOSED — DROP:carve-out.** Gate A✓ (the path is real and the sink is identical to the
   survivor's), but Gate C caps it: the chain requires exactly the position the verbatim carve-out excludes —
@@ -148,14 +149,14 @@ Cite real `file:line` hops at the pinned sha; keep examples generic — no real 
 ### Lead `B2-L1` — control-plane model-register → `yaml.load` — finder claimed `CRIT`
 
 - **Chain (verified hops):**
-  - source `modelgate/control/configloader.py:40` — `POST /v1/admin/models/register` body parsed as YAML
-  - **sink** `modelgate/control/configloader.py:58` — `yaml.load(body, Loader=yaml.Loader)` (unsafe full loader)
+  - source `control/configloader.py:40` — `POST /v1/admin/models/register` body parsed as YAML
+  - **sink** `control/configloader.py:58` — `yaml.load(body, Loader=yaml.Loader)` (unsafe full loader)
 - **Reachability:** actor = authenticated admin · channel = control-plane API · precondition = admin token.
 - **Verdict:** **CLOSED — DROP:dup.** Gate B✗: `GHSA-xxxx-fake-0001` covers this exact `yaml.load` at this
   exact path, with a fix already in an **OPEN** PR. Worth zero and costs credibility to file. (Secondary
   issue: it is also admin-gated, so the finder's "unauth CRIT" framing was wrong on reach as well as on novelty.)
 - **Dup evidence:** GHSA hit `GHSA-xxxx-fake-0001` (`https://ghsa.example/GHSA-xxxx-fake-0001`); confirmed
-  same symbol + same `configloader.py` path; OPEN remediation PR `#412` (`https://github.example/acme/modelgate/pull/412`).
+  same symbol + same `configloader.py` path; OPEN remediation PR `#412` (`https://github.example/acme/pull/412`).
 
 ---
 
@@ -167,7 +168,7 @@ honest round is dry, the ceiling is real; leave).*
 
 | When | Decision | Why |
 |---|---|---|
-| `R1 / 2026-10-06` | retire B3 and B4 | both die structurally against the two verbatim carve-outs (inter-node channel; operator-loads-file) — no in-scope surface left to sweep |
+| `R1 / 2026-10-06` | retire B3 and B4 | B3 lands in the inter-node carve-out; B4 is documented operator-risk behavior — both out of scope, no in-scope surface left |
 | `R1 / 2026-10-06` | park B2 for a focused incomplete-fix re-run | this round's B2 was a dup + a mis-tiered auth-gated sink; revisit only when control-plane churn moves |
 | `R1 / 2026-10-06` | **stop at K=1 — do not fan out Round 2** | survivor in hand (B1→SUBMISSION-1); remaining surface is dup / carve-out / documented, not dry-but-promising — a second round would only re-pay the tax |
 
@@ -176,7 +177,7 @@ honest round is dry, the ceiling is real; leave).*
 ## Final honest verdict
 
 - **Rounds run:** `1` · **Buckets:** `4 explored / 2 retired (B3 carve-out, B4 documented)` · **Survivors filed:** `1` (`SUBMISSION-1`)
-- **Overclaim summary:** 3 CRIT + 2 HIGH claimed → **1 survived**, recalibrated down a tier to HIGH. Tax paid this run: 4 of 5 claims inflated (2 CRIT collapsed, 2 HIGH collapsed, 1 CRIT over-tiered).
+- **Overclaim summary:** 3 CRIT + 2 HIGH claimed → **1 survived**, recalibrated down a tier to HIGH. Tax paid this run: 5 of 5 claims inflated (2 CRIT + 2 HIGH collapsed, 1 CRIT over-tiered).
 - **Why stopped / pivoted:** survivor in hand; the rest of the surface is structurally out-of-scope by the
   vendor's own carve-outs or already covered by a prior advisory — not a surface that another honest round improves.
 - **Residual leads for a future run:** (1) watch for **new** data-plane routes mounted on `dataplane/server.py`

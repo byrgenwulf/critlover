@@ -18,7 +18,7 @@ severity-recalibrate). This is the artifact a human reviews and files.*
 |---|---|
 | Target | `acme/modelgate` *(fictional multi-node ML serving gateway)* |
 | Commit (HEAD) | `0fae1dface0fface1dcafe0bad0c0ffee5eeded0` — every `file:line` below is true at this sha |
-| Component / subsystem | `modelgate/dataplane` (shard-sync listener) → `modelgate/serde/blobcodec` |
+| Component / subsystem | `dataplane` (shard-sync listener) → `serde/blobcodec` |
 | Bug class | `CWE-502 : Deserialization of Untrusted Data` |
 | **Severity (vendor rubric)** | **`HIGH`** — vendor "serving-fabric RCE" tier *(recalibrated at Gate C from the finder's claimed CRIT)* |
 | Attacker tier | `unauthenticated network client` |
@@ -109,7 +109,7 @@ Observable success signal out-of-band callback from the worker process, or worke
 | Merged PRs | `decode_delta`, `shard_sync`, `require_token data-plane` | none | `https://github.example/acme/modelgate/pulls?q=decode_delta+is:merged` |
 | **OPEN** PRs | `decode_delta`, `shard router auth` | none | `https://github.example/acme/modelgate/pulls?q=decode_delta+is:open` |
 | **OPEN** issues | `shard sync`, `data-plane auth`, `cloudpickle` | one perf issue on `shard_sync`, not security | `https://github.example/acme/modelgate/issues/388` |
-| Incomplete-fix check | sibling advisory `GHSA-xxxx-fake-0001` (`configloader.safe_load`, YAML, control plane) | **different sink, different path, different auth state — NOT its remainder; novel** | `https://ghsa.example/GHSA-xxxx-fake-0001` |
+| Incomplete-fix check | sibling advisory `GHSA-xxxx-fake-0001` (`yaml.load` at `configloader.py:58`, control plane) | **different sink, different path, different auth state — NOT its remainder; novel** | `https://ghsa.example/GHSA-xxxx-fake-0001` |
 
 **Conclusion:** **NOVEL — no covering hit.** The one adjacent advisory (`GHSA-xxxx-fake-0001`) is a
 control-plane YAML loader behind admin auth; this is an unauth data-plane `cloudpickle` sink.
