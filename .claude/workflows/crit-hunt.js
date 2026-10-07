@@ -1,5 +1,5 @@
 /*
- * crit-hunt.js — critlover finder fan-out + honest grading (pipeline stages 3-5)
+ * crit-hunt.js — critlover finder fan-out + honest grading (pipeline stages 3-4)
  * ===========================================================================
  *
  * AUTHORIZED research + RESPONSIBLE DISCLOSURE only. Run this ONLY against an
@@ -37,8 +37,13 @@
  *       venue:             "huntr | ZDI | Google OSS VRP | vendor GHSA",
  *       threatModelFilter: "<in-scope / carve-outs / severity rubric, as text>",
  *       buckets: [ { key, hypothesis, paths:[...] }, ... ],  // from stage 2 (bucket design)
- *       knownAdvisories:   "<optional: CVE/GHSA/PR/issue prior art, as text>"
+ *       knownAdvisories:   "<optional: CVE/GHSA/PR/issue prior art, as text>",
+ *       rubricRewardsLowInfo: false,  // optional — true also keeps LOW/INFO survivors
+ *       keepSeverities:    ["CRIT","HIGH","MED"]  // optional — override the filing floor outright
  *     }
+ * STAGE SCOPE: this is stages 3-4 (fan-out + the three grading gates). Stage 5 (the
+ * SUBMISSION / PROGRESS write-up) has no filesystem here and is the human's / skill's step;
+ * the returned {survivors, dropped} are its inputs.
  *   Scale the bucket list to the surface map; empty buckets => nothing to do.
  *   Resume with { scriptPath, resumeFromRunId } after an edit or pause.
  */
@@ -46,7 +51,7 @@
 export const meta = {
   name: 'crit-hunt',
   description: 'Fan out one finder per attack-surface bucket, then honestly grade every claim (source-verify -> dup-check -> severity-recalibrate) and keep only survivors. Authorized research + responsible disclosure only; a human files and does lab validation.',
-  whenToUse: 'Pipeline stages 3-5 of the critlover harness: finder fan-out and honest grading of an in-scope, AUTHORIZED open-source target. Expects args {repoPath, target, venue, threatModelFilter, buckets:[{key,hypothesis,paths}], knownAdvisories?}.',
+  whenToUse: 'Pipeline stages 3-4 of the critlover harness (fan-out + the three grading gates; stage 5 write-up is the human\'s step): honest grading of an in-scope, AUTHORIZED open-source target. Expects args {repoPath, target, venue, threatModelFilter, buckets:[{key,hypothesis,paths}], knownAdvisories?, rubricRewardsLowInfo?, keepSeverities?}.',
   phases: [
     { title: 'Find', detail: 'One finder agent per bucket (parallel barrier), each carrying the threat-model filter, its crit hypothesis, and the reachability bar; report the chain not an exploit. Dedup by title+sink in plain code.' },
     { title: 'Verify', detail: 'Pipeline each finding (no barrier): source-verify to REFUTE every link in repoPath -> dup-check vs advisories/PRs/issues -> severity-recalibrate vs vendor precedent. Keep only verified, non-dup, CRIT/HIGH/MED survivors.' },
@@ -64,7 +69,13 @@ const threatModelFilter = A.threatModelFilter || '(no threat-model filter suppli
 const buckets = Array.isArray(A.buckets) ? A.buckets : []
 const knownAdvisories = A.knownAdvisories || '(none supplied — search advisories / PRs / issues from scratch)'
 
-const KEEP_SEVERITIES = ['CRIT', 'HIGH', 'MED']
+// MED is the DEFAULT filing floor (CLAUDE.md canon). A venue whose rubric explicitly
+// rewards Low/Info can opt in with args.rubricRewardsLowInfo=true, or override the set
+// outright with args.keepSeverities — so the workflow never silently buries a
+// rubric-supported sub-MED finding.
+const KEEP_SEVERITIES = (Array.isArray(A.keepSeverities) && A.keepSeverities.length)
+  ? A.keepSeverities
+  : (A.rubricRewardsLowInfo ? ['CRIT', 'HIGH', 'MED', 'LOW', 'INFO'] : ['CRIT', 'HIGH', 'MED'])
 
 // Shared reachability bar — who can trigger it; network / guest-unprivileged?
 const REACHABILITY_BAR = [
@@ -270,17 +281,29 @@ const rawFindings = finderResults
   .flatMap((r) => (r && Array.isArray(r.findings)) ? r.findings : [])
   .filter(Boolean)
 
-// Dedup by title+sink in plain code.
-const seen = new Set()
+// Dedup on the bug's IDENTITY (normalized sink file:line), not its prose — so two
+// finders describing the same bug with different wording don't both survive and become
+// a self-dup SUBMISSION. Collapsed near-dups are logged (returned in `dropped`), never
+// silently lost, so an over-collapse stays auditable.
+const normSink = (s) => {
+  const t = String(s || '').toLowerCase().replace(/\s+/g, '')
+  const m = t.match(/[a-z0-9_./-]+:\d+/)   // a file:line token if the finder gave one
+  return m ? m[0] : t
+}
+const seen = new Map()
 const deduped = []
+const collapsed = []
 for (const f of rawFindings) {
-  const key = String(f.title) + '::' + String(f.sink)
-  if (seen.has(key)) continue
-  seen.add(key)
+  const key = normSink(f.sink)
+  if (seen.has(key)) {
+    collapsed.push({ finding: f, dropReason: 'in-code dup of ' + seen.get(key) + ' (same normalized sink ' + key + ')' })
+    continue
+  }
+  seen.set(key, (f && f.id) ? f.id : ('#' + deduped.length))
   deduped.push(f)
 }
 
-log('Find: ' + rawFindings.length + ' raw finding(s); ' + deduped.length + ' after dedup by title+sink.')
+log('Find: ' + rawFindings.length + ' raw finding(s); ' + deduped.length + ' after dedup; ' + collapsed.length + ' collapsed as in-code dup(s).')
 
 if (deduped.length === 0) {
   log('No findings to grade — nothing cleared the Find phase. A clean skip is a success, not a failure.')
@@ -305,20 +328,26 @@ const graded = await pipeline(
       phase: 'Verify',
       schema: VERIFY_SCHEMA,
     }).then((verify) => ({ finding: finding, verify: verify })),
-  // (b) dup-check — against knownAdvisories + open PRs/issues.
-  (prev, finding, idx) =>
-    agent(dupCheckPrompt(prev.finding), {
+  // (b) dup-check — Gate B. Short-circuit: a finding refuted at Gate A skips this agent
+  // (and keeps the no-barrier latency win — this is a per-item skip, not a barrier).
+  (prev, finding, idx) => {
+    if (!prev || !prev.verify || prev.verify.verified !== true) return prev
+    return agent(dupCheckPrompt(prev.finding), {
       label: 'dup-check: ' + finderId(finding, idx),
       phase: 'Verify',
       schema: DUP_SCHEMA,
-    }).then((dup) => ({ finding: prev.finding, verify: prev.verify, dup: dup })),
-  // (c) severity-recalibrate — against the vendor's own precedent.
-  (prev, finding, idx) =>
-    agent(severityPrompt(prev), {
+    }).then((dup) => ({ finding: prev.finding, verify: prev.verify, dup: dup }))
+  },
+  // (c) severity-recalibrate — Gate C. Short-circuit: skip for a refuted or duplicate finding.
+  (prev, finding, idx) => {
+    if (!prev || !prev.verify || prev.verify.verified !== true) return prev
+    if (!prev.dup || prev.dup.dup === true) return prev
+    return agent(severityPrompt(prev), {
       label: 'recalibrate: ' + finderId(finding, idx),
       phase: 'Verify',
       schema: SEVERITY_SCHEMA,
-    }).then((severity) => ({ finding: prev.finding, verify: prev.verify, dup: prev.dup, severity: severity })),
+    }).then((severity) => ({ finding: prev.finding, verify: prev.verify, dup: prev.dup, severity: severity }))
+  },
 )
 
 // ---------------------------------------------------------------------------
@@ -328,55 +357,60 @@ const graded = await pipeline(
 const survivors = []
 const dropped = []
 
+// In-code dedup collapses are drops too — keep them auditable (not silently lost).
+collapsed.forEach((c) => dropped.push({
+  finding: c.finding, verify: null, dup: null, severity: null, dropReason: c.dropReason,
+}))
+
 // Account for any finding whose grading pipeline errored (a stage threw -> null),
 // so nothing is silently lost from the tally.
 graded.forEach((g, i) => {
   if (!g) {
     dropped.push({
-      finding: deduped[i],
-      verify: null,
-      dup: null,
-      severity: null,
+      finding: deduped[i], verify: null, dup: null, severity: null,
       dropReason: 'grading pipeline errored on this finding (a stage threw); not gradable',
     })
   }
 })
 
+// Classify by the FIRST gate each finding failed (short-circuited findings carry only
+// the stages that actually ran), so every drop records the true reason.
 graded.filter(Boolean).forEach((g) => {
-  if (!(g.verify && g.dup && g.severity)) {
+  // Gate A — refuted (dup-check + severity were short-circuited)
+  if (!g.verify || g.verify.verified !== true) {
     dropped.push({
-      finding: g.finding,
-      verify: g.verify || null,
-      dup: g.dup || null,
-      severity: g.severity || null,
-      dropReason: 'incomplete grading — an agent was skipped or failed; cannot stake a claim on it',
+      finding: g.finding, verify: g.verify || null, dup: g.dup || null, severity: g.severity || null,
+      dropReason: (g.verify && g.verify.brokenLink)
+        ? ('source-verify refuted — broken link: ' + g.verify.brokenLink)
+        : 'source-verify refuted — chain not proven (Gate A)',
     })
     return
   }
-  const sevOk = KEEP_SEVERITIES.indexOf(g.severity.severity) !== -1
-  const keep = g.verify.verified === true && g.dup.dup === false && sevOk
-  if (keep) {
+  // Gate B — duplicate, or dup-check agent unavailable (severity was short-circuited)
+  if (!g.dup || g.dup.dup === true) {
+    dropped.push({
+      finding: g.finding, verify: g.verify, dup: g.dup || null, severity: g.severity || null,
+      dropReason: g.dup ? ('duplicate — ' + (g.dup.evidence || 'prior art found'))
+                        : 'dup-check unavailable (agent skipped or failed)',
+    })
+    return
+  }
+  // verified + non-dup: the severity agent should have run
+  if (!g.severity) {
+    dropped.push({
+      finding: g.finding, verify: g.verify, dup: g.dup, severity: null,
+      dropReason: 'incomplete grading — severity agent skipped or failed',
+    })
+    return
+  }
+  // Gate C — severity floor
+  if (KEEP_SEVERITIES.indexOf(g.severity.severity) !== -1) {
     survivors.push(g)
     return
   }
-  const reasons = []
-  if (g.verify.verified !== true) {
-    reasons.push(g.verify.brokenLink
-      ? ('source-verify refuted — broken link: ' + g.verify.brokenLink)
-      : 'source-verify refuted — chain not proven')
-  }
-  if (g.dup.dup === true) {
-    reasons.push('duplicate — ' + (g.dup.evidence || 'prior art found'))
-  }
-  if (!sevOk) {
-    reasons.push('recalibrated to ' + g.severity.severity + ' (below the MED filing floor — logged in PROGRESS, not filed)')
-  }
   dropped.push({
-    finding: g.finding,
-    verify: g.verify,
-    dup: g.dup,
-    severity: g.severity,
-    dropReason: reasons.join('; '),
+    finding: g.finding, verify: g.verify, dup: g.dup, severity: g.severity,
+    dropReason: 'recalibrated to ' + g.severity.severity + ' (below the MED default filing floor — log in PROGRESS; file only if this venue\'s rubric rewards Low/Info)',
   })
 })
 
